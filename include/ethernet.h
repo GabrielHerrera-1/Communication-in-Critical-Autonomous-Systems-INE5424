@@ -78,6 +78,8 @@ public:
         Address& dst() { return _dst; }
         // retorna referencia da origem. permite escrita
         Address& src() { return _src; }
+        // leitura do ethertype. monta o uint16_t a partir dos 2 bytes
+        Protocol type() const { return (_type_hi << 8) | _type_lo; }
         // escrita do ethertype. fizemos assim para evitar bugs de endianness
         void type(Protocol p) { _type_hi = (p >> 8) & 0xFF; _type_lo = p & 0xFF; }
         // ponteiro pro inicio do payload. é void porque pode ser qualquer coisa no futuro
