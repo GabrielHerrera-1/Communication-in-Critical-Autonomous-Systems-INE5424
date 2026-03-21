@@ -20,16 +20,7 @@ public:
 
     ~Conditional_Data_Observer() {}
 
-    void update(Condition c, T * t) {
-        _data.push(t);
-    }
-    T * updated() {
-        T* r = _data.front();
-        _data.pop();
-        return r;
-    }
-private:
-    std::queue<T*> _data:
+    virtual void update(Condition c, T * t);
 };
 
 template <typename T, typename Condition = void>
@@ -84,7 +75,6 @@ public:
     }
 private:
     Observers _observers;
-    std::mutex _mtx;
 };
 
 
