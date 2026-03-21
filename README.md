@@ -18,7 +18,7 @@ sudo apt install g++-riscv64-linux-gnu qemu-system-misc cpio
 **1. Compilar o código fonte**
 Precisamos compilar o programa de forma estática para a arquitetura da máquina virtual (RISC-V):
 ```
-riscv64-linux-gnu-g++ -static rede_hello.cpp -o rede_hello
+ <>
 ```
 
 **2. Injetar o programa no sistema de arquivos da VM**
@@ -35,7 +35,7 @@ rm -rf work/
 **3. Iniciar a VM 1 (Receptor / Escuta)**
 Abra um terminal e rode o QEMU configurando o MAC Address com final `01`. Esta máquina ficará escutando a rede:
 ```
-qemu-system-riscv64 -machine virt -nographic -kernel Image -initrd novo_initramfs.cpio -netdev socket,id=net0,mcast=230.0.0.1:1234 -device virtio-net-device,netdev=net0,mac=52:54:00:00:00:01 --append "root=/dev/ram"
+    qemu-system-riscv64 -machine virt -nographic -kernel Image -initrd novo_initramfs.cpio -netdev socket,id=net0,mcast=230.0.0.1:1234 -device virtio-net-device,netdev=net0,mac=52:54:00:00:00:01 --append "root=/dev/ram"
 ```
 *Dentro da VM iniciada, digite e execute:* 
 ```

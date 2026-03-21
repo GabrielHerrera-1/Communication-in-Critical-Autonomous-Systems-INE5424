@@ -12,8 +12,7 @@
 // sem.v();
 // destrutor limpa automaticamente
 
-#ifndef SEMAPHORE_H
-#define SEMAPHORE_H
+#pragma once
 
 #include <semaphore.h>
 
@@ -34,5 +33,3 @@ class Semaphore {
     private:
         sem_t _sem;
 };
-
-#endif
