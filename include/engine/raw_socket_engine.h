@@ -4,6 +4,8 @@
 // header só com declarações. implementação fica no .cpp pra evitar recompilar tudo quando mudar algo do socket
 class RawSocketEngine {
 protected:
+    // explicita construtor padrao
+    RawSocketEngine() = default;
     // inicializa o socket cru e faz bind na interface. recebe o nome da interface (ex: "eth0") que vem de Traits
     void engine_init(const char* interface_name);
     // envia N bytes para a rede. a NIC monta o frame e passa pra ca
@@ -16,8 +18,9 @@ protected:
     void engine_get_address(unsigned char* mac);
 
 private:
-    int _sockfd;   // file descriptor do socket cru
-    int _ifindex;  // indice da interface de rede (ex: eth0 = 2)
+    // valores padrao de inicializacao pra nao ter lixo de memoria
+    int _sockfd{-1};   // file descriptor do socket cru
+    int _ifindex{0};   // indice da interface de rede (ex: eth0 = 2)
 };
 
 #endif

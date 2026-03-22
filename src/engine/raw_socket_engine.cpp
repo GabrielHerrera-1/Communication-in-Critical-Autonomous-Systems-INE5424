@@ -22,7 +22,13 @@ void RawSocketEngine::engine_init(const char* iface) {
 
     // o kernel identifica interfaces por numero, nao por nome. converte "eth0" -> 2 (ou qualquer indice)
     _ifindex = if_nametoindex(iface);
-    if (_ifindex == 0) { perror("[Engine] interface"); return; }
+    // no caso de a interface não existir por exemplo
+    if (_ifindex == 0) {
+        perror("[Engine] interface");
+        close(_sockfd);
+        _sockfd = -1;
+        return;
+    }
 
     // sockaddr_ll = struct que descreve "onde" um socket de camada 2 se conecta. "ll" = link layer, camada de enlace
     // memset zera tudo antes de preencher. sem isso os campos que nao preenchemos poderiam ter lixo de memoria
@@ -34,13 +40,24 @@ void RawSocketEngine::engine_init(const char* iface) {
     // bind = "amarra esse socket nessa interface". sem bind, receberia frames de TODAS as interfaces
     // o cast (struct sockaddr*) existe porque bind aceita varios tipos de endereco (ipv4, ipv6, packet...)
     // o tipo generico é struct sockaddr, e o kernel olha o campo family pra saber qual é
-    if (bind(_sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+    
+    // no caso de o bind falhar
+    if (bind(_sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("[Engine] bind");
+        close(_sockfd);
+        _sockfd = -1;
+        _ifindex = 0;
+    }
 }
 
 // envia o frame completo (header ethernet + payload) pro socket.
 // a NIC monta o frame (dst+src+type+payload) e passa pra ca. o engine so empurra pro kernel
 int RawSocketEngine::engine_send(const void* frame, unsigned int size) {
+    // no caso de o engine_init ter falhado em qualquer ponto
+    if (_sockfd < 0 || _ifindex == 0) {
+        return -1;
+    }
+
     // monta o sockaddr_ll de destino pro sendto
     struct sockaddr_ll dest;
     memset(&dest, 0, sizeof(dest));
@@ -60,6 +77,10 @@ int RawSocketEngine::engine_send(const void* frame, unsigned int size) {
 // o kernel ja tirou preambulo/SFD/FCS. o que chega é: [dst 6B][src 6B][type 2B][payload ate 1500B]
 // retorna quantos bytes leu. se o socket for fechado (engine_close), retorna -1 e a thread da NIC sai do loop
 int RawSocketEngine::engine_receive(void* frame, unsigned int size) {
+    // no caso de o socket nao estar aberto
+    if (_sockfd < 0) {
+        return -1;
+    }
     return recv(_sockfd, frame, size, 0);
 }
 
@@ -72,13 +93,28 @@ void RawSocketEngine::engine_close() {
 // pergunta pro kernel qual o MAC da interface e copia pro ponteiro que a NIC passou.
 // a NIC chama isso no construtor dela pra saber o proprio endereco
 void RawSocketEngine::engine_get_address(unsigned char* mac) {
+    if (!mac) {
+        return;
+    }
+
+    // zera o mac antes de tentar ler. se qqr coisa falhar depois o chamador recebe um mac zearado, não lixo de memoria
+    memset(mac, 0, 6);
+    
+    // se o engine n tiver sido inicializado corretamente n tenta fazer o ioctl
+    if (_sockfd < 0 || _ifindex == 0) {
+        return;
+    }
+
     // ifreq = "interface request". struct usada pelo ioctl pra perguntas sobre interfaces
     // campos principais: ifr_name (entrada, nome da interface), ifr_hwaddr (saida, MAC preenchido pelo kernel)
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     // ioctl identifica interface pelo nome, nao pelo numero. converte de volta: 2 -> "eth0"
     char name[IF_NAMESIZE];
-    if_indextoname(_ifindex, name);
+    if (!if_indextoname(_ifindex, name)) {
+        perror("[Engine] if_indextoname");
+        return;
+    }
     strncpy(ifr.ifr_name, name, IFNAMSIZ - 1); // IFNAMSIZ = 16 bytes, tamanho maximo de nome de interface no linux
     // ioctl = canivete suico do linux. o segundo argumento diz O QUE perguntar:
     // SIOCGIFHWADDR = "Socket IO Control Get InterFace HardWare ADDRess" = me da o MAC dessa interface
