@@ -3,7 +3,7 @@
 
 #include <queue>
 #include <map>
-#include "semaphore.h"
+#include "posix_semaphore.h"
 #include <iterator>
 #include <mutex>
 #include <algorithm>
@@ -20,10 +20,11 @@ public:
 
     ~Conditional_Data_Observer() {}
 
-    virtual void update(Condition c, T * t);
+    // = 0 torna a classe abstrata
+    virtual void update(Condition c, T * t) = 0;
 };
 
-template <typename T, typename Condition = void>
+template <typename T, typename Condition>
 class Conditionally_Data_Observed{
         friend class Conditional_Data_Observer<T, Condition>;
 
@@ -33,7 +34,7 @@ public:
         Conditional_Data_Observer<T, Condition>* observer;
         Condition condition;
     };
-    
+
     typedef std::vector<Conditional_Data_Observer_Entry> Observers;
 
 public:
@@ -45,36 +46,45 @@ public:
     ~Conditionally_Data_Observed() {}
 
     void attach(Conditional_Data_Observer<T, Condition> * o, Condition c) {
+        // lock_guard: trava o mutex e destrava automaticamente ao sair do escopo
+        // necessario porque attach pode ser chamado da thread principal enquanto notify roda no recv_loop
+        std::lock_guard<std::mutex> lock(_mtx);
         _observers.push_back({o, c});
-
     }
- 
+
     void detach(Conditional_Data_Observer<T, Condition> * o, Condition c) {
+        std::lock_guard<std::mutex> lock(_mtx);
         // tira os elementos que dão true no lambda da range begin - end (a range não é alterada pelo movimento dos elementos)
         auto it = std::remove_if(_observers.begin(), _observers.end(),
-        [&](const Conditional_Data_Observer_Entry& e) { 
-            return e.observer == o && e.condition == c; 
+        [&](const Conditional_Data_Observer_Entry& e) {
+            return e.observer == o && e.condition == c;
         });
         // it é o priemeiro iterator deposi do end "antigo"
         // agora apagamos tudo fora da range antiga
         _observers.erase(it, _observers.end());
-        
     }
-    
+
     bool notify(Condition c, T * d) {
-        // caso seja garantido qeu atach/detach sejam so realizados durante o "startup" seria possível tirar o safe guard, mas como não é
+        // snapshot: copia o vetor com o lock, solta o lock, itera na cópia
+        // evita deadlock caso update() chame detach(). sem snapshot, detach() tentaria
+        // travar o mesmo mutex que notify() já segura
+        Observers snapshot;
+        {
+            std::lock_guard<std::mutex> lock(_mtx);
+            snapshot = _observers;
+        }
         bool notified = false;
-        for (auto& e : _observers){
+        for (auto& e : snapshot){
             if (e.condition == c){
                 e.observer->update(c, d);
                 notified = true;
             }
         }
         return notified;
-        
     }
 private:
     Observers _observers;
+    std::mutex _mtx; // protege _observers contra acesso concorrente entre attach/detach/notify
 };
 
 
@@ -96,19 +106,18 @@ public:
     ~Concurrent_Observer() {}
 
     void update(C c, D * d) {
-        _mtx.lock();
+        // lock_guard em vez de lock/unlock manual: se funcao lançar exceção,
+        // o destrutor do lock_guard garante que o mutex é destravado
+        std::lock_guard<std::mutex> lock(_mtx);
         _data.push(d);
-        _mtx.unlock();
-        
         _semaphore.v();
     }
     D * updated() {
         _semaphore.p();
 
-        _mtx.lock();
+        std::lock_guard<std::mutex> lock(_mtx);
         D* r = _data.front();
         _data.pop();
-        _mtx.unlock();
         return r;
     }
 private:
@@ -117,9 +126,9 @@ private:
     std::queue<D*> _data;
 };
 
-template<typename D, typename C = void>
+template<typename D, typename C>
 class Concurrent_Observed
-{   
+{
     friend class Concurrent_Observer<D, C>;
 
 public:
@@ -143,38 +152,38 @@ public:
     ~Concurrent_Observed() {}
 
     void attach(Concurrent_Observer<D, C> * o, C c) {
-        _mtx.lock();
+        std::lock_guard<std::mutex> lock(_mtx);
         _observers.push_back({o, c});
-        _mtx.unlock();
     }
- 
+
     void detach(Concurrent_Observer<D, C> * o, C c) {
-        _mtx.lock();
+        std::lock_guard<std::mutex> lock(_mtx);
         // tira os elementos que dão true no lambda da range begin - end (a range não é alterada pelo movimento dos elementos)
         auto it = std::remove_if(_observers.begin(), _observers.end(),
-        [&](const Concurrent_Observer_Entry& e) { 
-            return e.observer == o && e.condition == c; 
+        [&](const Concurrent_Observer_Entry& e) {
+            return e.observer == o && e.condition == c;
         });
         // it é o priemeiro iterator deposi do end "antigo"
         // agora apagamos tudo fora da range antiga
         _observers.erase(it, _observers.end());
-        _mtx.unlock();
-        
     }
-    
+
     bool notify(C c, D * d) {
-        // caso seja garantido qeu atach/detach sejam so realizados durante o "startup" seria possível tirar o safe guard, mas como não é
-        _mtx.lock();
+        // snapshot: mesma razão do Conditionally_Data_Observed
+        // copia o vetor com lock, solta lock, itera na cópia sem risco de deadlock
+        Observers snapshot;
+        {
+            std::lock_guard<std::mutex> lock(_mtx);
+            snapshot = _observers;
+        }
         bool notified = false;
-        for (auto& e : _observers){
+        for (auto& e : snapshot){
             if (e.condition == c){
                 e.observer->update(c, d);
                 notified = true;
             }
         }
-        _mtx.unlock();
         return notified;
-        
     }
 private:
     Observers _observers;
