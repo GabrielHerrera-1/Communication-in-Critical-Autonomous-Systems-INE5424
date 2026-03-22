@@ -81,11 +81,11 @@ public:
         Ethernet::Frame frame;
         int bytes = Engine::engine_receive(&frame, sizeof(frame));
         if (bytes <= 0) return bytes;
-        *src = frame.src();
-        *prot = frame.type();
+        if (src) *src = frame.src();
+        if (prot) *prot = frame.type();
         unsigned int payload_size = bytes - Ethernet::HEADER_SIZE;
         if (payload_size > size) payload_size = size;
-        memcpy(data, frame.payload(), payload_size);
+        if (data && payload_size) memcpy(data, frame.payload(), payload_size);
         _statistics.rx_packets++;
         _statistics.rx_bytes += bytes;
         return payload_size;
@@ -93,6 +93,7 @@ public:
 
     // procura buffer livre no pool, trava ele e monta header ethernet
     Buffer<Ethernet::Frame> *alloc(Address dst, Protocol_Number prot, unsigned int size) {
+        if (size > Ethernet::MTU) return nullptr;
         Buffer<Ethernet::Frame> *buf = alloc_buf();
         if (!buf) return nullptr;
         buf->size(size);
@@ -106,9 +107,10 @@ public:
     // envia o frame montado pelo engine e libera o buffer
     int send(Buffer<Ethernet::Frame> *buf) {
         int bytes = Engine::engine_send(buf->data(), Ethernet::HEADER_SIZE + buf->size());
-        // ajeita as estatisticas
-        _statistics.tx_packets++;
-        _statistics.tx_bytes += bytes;
+        if (bytes > 0) {
+            _statistics.tx_packets++;
+            _statistics.tx_bytes += bytes;
+        }
         // marca buffer como livre
         buf->unlock();
         return bytes;
@@ -122,11 +124,11 @@ public:
     // extrai os campos de um buffer recebido
     int unmarshal(Buffer<Ethernet::Frame> *buf, Address *src, Address *dst, void *data, unsigned int size) {
         Ethernet::Frame *f = buf->data();
-        *src = f->src();
-        *dst = f->dst();
+        if (src) *src = f->src();
+        if (dst) *dst = f->dst();
         unsigned int copy = buf->size();
         if (copy > size) copy = size;
-        memcpy(data, f->payload(), copy);
+        if (data && copy) memcpy(data, f->payload(), copy);
         return copy;
     };
 
@@ -147,8 +149,9 @@ public:
     // inicia a thread de recepção no primeiro attach, antes disso receive() pode ser usado direto
     void attach(Observer *obs, Protocol_Number prot) {
         Observed::attach(obs, prot);
-        if (!_thread_started) {
-            _thread_started = true;
+        // operacao atomica para ler comparar e escrever. evita concorrencia aqui no attach
+        bool expected = false;
+        if (_thread_started.compare_exchange_strong(expected, true)) {
             pthread_create(&_recv_thread, nullptr, recv_loop_entry, this);
         }
     };
@@ -185,6 +188,12 @@ private:
             Ethernet::Frame frame;
             int bytes = Engine::engine_receive(&frame, sizeof(frame));
             if (bytes <= 0) break;
+            // descarta frames que chegam incompletos
+            if (bytes < static_cast<int>(Ethernet::HEADER_SIZE)) continue;
+            // descarta frames que a propria nic enviou
+            if (frame.src() == _address) continue;
+
+            Protocol_Number prot = frame.type();
 
             _statistics.rx_packets++;
             _statistics.rx_bytes += bytes;
@@ -195,8 +204,6 @@ private:
 
             memcpy(buf->data(), &frame, bytes);
             buf->size(bytes - Ethernet::HEADER_SIZE);
-
-            Protocol_Number prot = buf->data()->type();
 
             // frame chegou da rede e ta no buffer, agora nic precisa entregar ele pra quem se interessou
             // o if(!...) é pro caso que ninguem estava registrado pra esse ethertype, isso faz com que o buffer fique travado a toa
