@@ -4,6 +4,7 @@
 #include <cstring> // para memset, memcpy e memcmp
 #include <cstdint> // para uint8_t e uint16_t
 #include <cstdio> // printf
+#include <type_traits>
 
 class Ethernet {
 public:
@@ -76,8 +77,10 @@ public:
     public:
         // retorna referencia do destino. permite escrita. nic usara escrita no alloc
         Address& dst() { return _dst; }
+        const Address& dst() const { return _dst; }
         // retorna referencia da origem. permite escrita
         Address& src() { return _src; }
+        const Address& src() const { return _src; }
         // leitura do ethertype. monta o uint16_t a partir dos 2 bytes
         Protocol type() const { return (_type_hi << 8) | _type_lo; }
         // escrita do ethertype. fizemos assim para evitar bugs de endianness
@@ -94,8 +97,22 @@ public:
         Address _src; // origem
         uint8_t _type_hi, _type_lo; // bytes mais e menos significativos do campo ethertype
         uint8_t _payload[MTU]; // payload de ate 1500 bytes
-    } __attribute__((packed)); // conforme professor falou: sem o packed compilador pode adicionar padding
+    };
 
 };
+
+// pra garantir que os dados estão alinhados, impedir que o compilador adicione padding. o packet estava sendo ignorado
+static_assert(sizeof(Ethernet::Address) == Ethernet::Address::LENGTH,
+              "Ethernet::Address precisa ter exatamente 6 bytes");
+static_assert(alignof(Ethernet::Address) == 1,
+              "Ethernet::Address precisa ter alinhamento de 1 byte");
+static_assert(std::is_standard_layout<Ethernet::Address>::value,
+              "Ethernet::Address precisa ser standard-layout");
+static_assert(sizeof(Ethernet::Frame) == Ethernet::HEADER_SIZE + Ethernet::MTU,
+              "Ethernet::Frame precisa bater com o layout do frame Ethernet");
+static_assert(alignof(Ethernet::Frame) == 1,
+              "Ethernet::Frame precisa ter alinhamento de 1 byte");
+static_assert(std::is_standard_layout<Ethernet::Frame>::value,
+              "Ethernet::Frame precisa ser standard-layout");
 
 #endif
