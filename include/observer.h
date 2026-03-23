@@ -3,6 +3,7 @@
 
 #include <queue>
 #include <map>
+#include <vector>
 #include "posix_semaphore.h"
 #include <iterator>
 #include <mutex>
@@ -15,6 +16,8 @@ template <typename T, typename Condition = void>
 class Conditional_Data_Observer{
     friend class Conditionally_Data_Observed<T, Condition>;
 public:
+    typedef T Observed_Data;
+    typedef Condition Observing_Condition;
 
     Conditional_Data_Observer() {}
 
@@ -182,6 +185,21 @@ public:
                 e.observer->update(this, c, d);
                 notified = true;
             }
+        }
+        return notified;
+    }
+
+    // para broadcast 
+    bool notify_all(D * d) {
+        Observers snapshot;
+        {
+            std::lock_guard<std::mutex> lock(_mtx);
+            snapshot = _observers;
+        }
+        bool notified = false;
+        for (auto& e : snapshot) {
+            e.observer->update(this, e.condition, d);
+            notified = true;
         }
         return notified;
     }
