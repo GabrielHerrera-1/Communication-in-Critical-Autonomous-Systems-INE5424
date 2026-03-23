@@ -1,0 +1,171 @@
+// no app de teste a nic precisa ser incluida antes do protocol
+
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
+
+#include "ethernet.h"
+#include "observer.h"
+#include "buffer.h"
+#include "traits.h"
+#include <cstring>
+
+// Communication Protocol
+// Protocol é generica e depende do tipo NIC, ja q ela vai chamar os metodos da NIC
+// professor escreveu "private typename NIC::Observer" mas typename nao é permitido em base class specifier. NIC::Observer so pode ser um tipo
+template <typename NIC> class Protocol : private NIC::Observer { // herança privada do Observer que a NIC herdou
+public:
+    // numero do protocolo
+    static const typename NIC::Protocol_Number PROTO = Traits<Protocol>::ETHERNET_PROTOCOL_NUMBER;
+    // buffer - typedef pra nao precisar escrever Buffer<Ethernet::Frame> toda vez
+    // ::Buffer referencia o template global
+    typedef ::Buffer<Ethernet::Frame> Buffer;
+    // MAC da NIC
+    typedef typename NIC::Address Physical_Address;
+    typedef uint16_t Port;
+    // a condicao aqui, diferente da NIC, é a porta, para saber qual communicator recebe. protocol filtra por porta, assim
+    // que entrega pro communicator correto
+    typedef Conditional_Data_Observer<Buffer, Port> Observer;
+    typedef Conditionally_Data_Observed<Buffer, Port> Observed;
+
+    // address aqui é um endereco composto: mac + porta
+    class Address {
+    public:
+        static const Address BROADCAST;
+        // Null serve pra construir endereco nulo e comparar
+        enum Null { NULL_ADDR };
+
+    public:
+        Address() : _paddr(), _port(0) {}
+        // construtor que constroi um endereço nulo, usamos pra comparações
+        Address(const Null &) : _paddr(), _port(0) {}
+        // construtor padrao, combina MAC com porta
+        Address(Physical_Address paddr, Port port) : _paddr(paddr), _port(port) {}
+
+        // getters
+        Physical_Address paddr() const { return _paddr; }
+        Port port() const { return _port; }
+
+        // retorna true se pelo menos um dos dois não for zero
+        operator bool() const { return (_paddr || _port); }
+        // dois end sao iguais se mac e porta batem
+        bool operator==(Address a) { return (_paddr == a._paddr) && (_port == a._port); }
+
+    private:
+        Physical_Address _paddr;
+        Port _port;
+    };
+
+    class Header {
+    public:
+        // getters e setters
+        Port src_port() const { return _src_port; }
+        void src_port(Port p) { _src_port = p; }
+        Port dst_port() const { return _dst_port; }
+        void dst_port(Port p) { _dst_port = p; }
+    private:
+        Port _src_port; // quem enviou
+        Port _dst_port; // quem recebeu (vai ser broadcast por enquanto)
+    };
+
+    static const unsigned int MTU = NIC::MTU - sizeof(Header);
+    typedef unsigned char Data[MTU];
+    class Packet : public Header
+    {
+    public:
+        Packet();
+        Header *header();
+        template <typename T>
+        T *data() { return reinterpret_cast<T *>(&_data); }
+
+    private:
+        Data _data;
+    } __attribute__((packed));
+
+protected:
+    Protocol(NIC *nic) : _nic(nic) {
+        _nic->attach(this, PROTO);
+        _instance = this;
+    }
+
+public:
+    ~Protocol() { _nic->detach(this, PROTO); }
+    static int send(Address from, Address to, const void *data, unsigned int size) {
+        Buffer *buf = _instance->_nic->alloc(to.paddr(), PROTO, sizeof(Header) + size);
+        if (!buf) return -1;
+
+        // pegar ponteiro pro payload do frame ethernet
+        // reinterpret_cast --> trate esse endereço de memoria (buf->data()->payload(), que é *void) como se fosse um ponteiro pra Header
+        // então eu pego o começo desse payload e escrevo o header
+        // significa: pegue esse espaço vazio e trate o começo dele como um header
+        Header *header = reinterpret_cast<Header*>(buf->data()->payload());
+        header->src_port(from.port());
+        header->dst_port(to.port());
+
+        // copia os dados da aplicacao para logo depois do header na memoria
+        // conversao pra char porque char anda de byte em byte, header anda em blocos de sizeof(Header)
+        // + sizeof(Header) é aritmetica de ponteiro. vai pro espaço depois do header
+        memcpy(reinterpret_cast<char*>(header) + sizeof(Header), data, size);
+
+        return _instance->_nic->send(buf);
+    };
+
+    // me parece que o from deveria ser ponteiro, porque no codigo do communicator que o professor deu como base
+    // ele chama receive com &from. por isso troquei aqui
+    static int receive(Buffer *buf, Address *from, void *data, unsigned int size) {
+        // aqui o communicator ja passou o buffer pro Protocol, vamos so desmontar esse buffer
+        Ethernet::Address src_mac, dst_mac;
+        _instance->_nic->unmarshal(buf, &src_mac, &dst_mac, nullptr, 0);
+
+        Header *header = reinterpret_cast<Header*>(buf->data()->payload());
+        *from = Address(src_mac, header->src_port());
+
+        unsigned int data_size = buf->size() - sizeof(Header);
+        if (data_size > size)
+            data_size = size;
+        memcpy(data, reinterpret_cast<char*>(header) + sizeof(Header), data_size);
+
+        _instance->_nic->free(buf);
+        return data_size;
+    };
+
+    // comentarios do guto abaixo. porem acredito que ele quisesse escrever NIC::unmarshal, porque o buffer ja foi recebido aqui,
+    // caso façamos NIC::receive vamos receber outro pacote
+
+    // unsigned int s = NIC::receive(buf, &from.paddr, &to.paddr, data, size)
+    // NIC::free(buf)
+    // return s;
+    static void attach(Observer *obs, Address address) {
+        _observed.attach(obs, address.port());
+    };
+    static void detach(Observer *obs, Address address) {
+        _observed.detach(obs, address.port());
+    };
+
+private:
+    // professor escreveu NIC::Protocol_Number sem typename, mas é tipo dependente e precisa de typename em C++17
+    void update(typename NIC::Observed *obs, typename NIC::Protocol_Number prot, Buffer *buf)
+    {
+        Header *header = reinterpret_cast<Header*>(buf->data()->payload());
+        if (!_observed.notify(header->dst_port(), buf)) // to call receive(...);
+            _nic->free(buf);
+    }
+
+private:
+    NIC *_nic;
+    // Channel protocols are usually singletons
+    static Observed _observed;
+    static Protocol* _instance; // ponteiro pro singleton
+};
+
+// inicializar BROADCAST
+template <typename NIC>
+const typename Protocol<NIC>::Address Protocol<NIC>::Address::BROADCAST(
+    Ethernet::Address::BROADCAST, 0xFFFF
+);
+
+// inicializacao dos static
+template <typename NIC> Protocol<NIC>* Protocol<NIC>::_instance = nullptr;
+
+template <typename NIC> typename Protocol<NIC>::Observed Protocol<NIC>::_observed;
+
+#endif

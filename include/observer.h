@@ -20,8 +20,8 @@ public:
 
     ~Conditional_Data_Observer() {}
 
-    // = 0 torna a classe abstrata
-    virtual void update(Condition c, T * t) = 0;
+    // = 0 torna a classe abstrata. primeiro parametro é o observed que chamou o update
+    virtual void update(Conditionally_Data_Observed<T, Condition>* obs, Condition c, T * t) = 0;
 };
 
 template <typename T, typename Condition>
@@ -76,7 +76,7 @@ public:
         bool notified = false;
         for (auto& e : snapshot){
             if (e.condition == c){
-                e.observer->update(c, d);
+                e.observer->update(this, c, d);
                 notified = true;
             }
         }
@@ -105,7 +105,7 @@ public:
 
     ~Concurrent_Observer() {}
 
-    void update(C c, D * d) {
+    void update(Concurrent_Observed<D, C>* obs, C c, D * d) {
         // lock_guard em vez de lock/unlock manual: se funcao lançar exceção,
         // o destrutor do lock_guard garante que o mutex é destravado
         std::lock_guard<std::mutex> lock(_mtx);
@@ -179,7 +179,7 @@ public:
         bool notified = false;
         for (auto& e : snapshot){
             if (e.condition == c){
-                e.observer->update(c, d);
+                e.observer->update(this, c, d);
                 notified = true;
             }
         }
