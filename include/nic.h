@@ -2,7 +2,7 @@
 #define NIC_H
 
 #include "ethernet.h"
-#include "observer.h"
+#include "observers/conditional_data_observer.h"
 #include "buffer.h"
 #include "traits.h"
 #include <pthread.h>
@@ -81,6 +81,7 @@ public:
         Ethernet::Frame frame;
         int bytes = Engine::engine_receive(&frame, sizeof(frame));
         if (bytes <= 0) return bytes;
+        if (bytes < static_cast<int>(Ethernet::HEADER_SIZE)) return -1;
         if (src) *src = frame.src();
         if (prot) *prot = frame.type();
         unsigned int payload_size = bytes - Ethernet::HEADER_SIZE;
