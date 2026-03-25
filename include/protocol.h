@@ -4,7 +4,8 @@
 #define PROTOCOL_H
 
 #include "ethernet.h"
-#include "observer.h"
+#include "observers/conditional_data_observer.h"
+#include "observers/concurrent_observer.h"
 #include "buffer.h"
 #include "traits.h"
 #include <cstring>
