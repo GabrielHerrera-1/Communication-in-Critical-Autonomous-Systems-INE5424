@@ -107,20 +107,6 @@ public:
         return notified;
     }
 
-    // para broadcast 
-    bool notify_all(D * d) {
-        Observers snapshot;
-        {
-            std::lock_guard<std::mutex> lock(_mtx);
-            snapshot = _observers;
-        }
-        bool notified = false;
-        for (auto& e : snapshot) {
-            e.observer->update(this, e.condition, d);
-            notified = true;
-        }
-        return notified;
-    }
 private:
     Observers _observers;
     std::mutex _mtx;
