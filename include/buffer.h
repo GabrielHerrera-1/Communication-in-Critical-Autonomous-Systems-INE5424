@@ -22,28 +22,11 @@ template<typename T> class Buffer {
         _size = s;
     }
 
-    // flag indicando se o buffer ta em uso
-    bool locked() const {
-        return _locked;
-    }
-
-    // marca como indisponivel
-    void lock() {
-        _locked = true;
-    }
-
-    // marca como disponivel
-    void unlock() {
-        _locked = false;
-    }
-
     private:
     // frame ethernet em si
     T _data;
     // quantos bytes de payload dentro do frame estão sendo usados de fato (o maximo que definimos antes é 1500)
-    unsigned int _size;
-    // se buffer ta livre ou em uso
-    bool _locked;
+    unsigned int _size{0};
 };
 
 #endif

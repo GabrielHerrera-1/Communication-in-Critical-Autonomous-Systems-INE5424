@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdio>
 #include <atomic>
+#include <stack>
 
 // Network
 template <typename Engine>
@@ -49,7 +50,8 @@ public:
 
         // marcar todos buffers como livres
         for (unsigned int i = 0; i < BUFFER_SIZE; i++) {
-            _buffer[i].unlock();
+            // cada elemento da stack contem um numero, esse numero representa o indice do buffer livre no array
+            _free_list.push(i); // inicializa a free list com todos buffers livres
         }
 
         // thread de recepção sera iniciada no primeiro attach(), não aqui
@@ -112,14 +114,20 @@ public:
             _statistics.tx_packets++;
             _statistics.tx_bytes += bytes;
         }
-        // marca buffer como livre
-        buf->unlock();
+        // libera buffer
+        free(buf);
         return bytes;
     };
 
     // so devolve o buffer pro pool, marca como livre
     void free(Buffer<Ethernet::Frame> *buf) {
-        buf->unlock();
+        if (!buf) return;
+
+        // usa o mesmo mutex do alloc
+        std::lock_guard<std::mutex> lock(_buf_mtx);
+        // pega a posicao de buf dentro do array _buffer
+        unsigned int idx = static_cast<unsigned int>(buf - _buffer);
+        _free_list.push(idx);
     };
 
     // extrai os campos de um buffer recebido
@@ -165,17 +173,16 @@ private:
 
     // procura buffer livre no pool, trava e retorna. nullptr se cheio
     Buffer<Ethernet::Frame> *alloc_buf() {
-        _buf_mtx.lock();
-        Buffer<Ethernet::Frame> *buf = nullptr;
-        for (unsigned int i = 0; i < BUFFER_SIZE; i++) {
-            if (!_buffer[i].locked()) {
-                buf = &_buffer[i];
-                buf->lock();
-                break;
-            }
+        // lock guard destrava o mutex quando o objeto sai do escopo
+        std::lock_guard<std::mutex> lock(_buf_mtx);
+
+        if (_free_list.empty()) {
+            return nullptr;
         }
-        _buf_mtx.unlock();
-        return buf;
+
+        unsigned int idx = _free_list.top(); // pega o top da stack (o indice de um buffer livre)
+        _free_list.pop();
+        return &_buffer[idx];
     }
 
     // pega o ponteiro pra void e transforma de volta em ponteiro pra NIC, em seguida chama o metodo real
@@ -209,7 +216,7 @@ private:
             // frame chegou da rede e ta no buffer, agora nic precisa entregar ele pra quem se interessou
             // o if(!...) é pro caso que ninguem estava registrado pra esse ethertype, isso faz com que o buffer fique travado a toa
             if (!Observed::notify(prot, buf)) {
-                buf->unlock();
+                free(buf);
             }
         }
     }
@@ -222,6 +229,7 @@ private:
     std::mutex _buf_mtx;
     Statistics _statistics;
     Buffer<Ethernet::Frame> _buffer[BUFFER_SIZE];
+    std::stack<unsigned int> _free_list; // usaremos free list para alocação dos buffers pois é O(1)
 };
 
 #endif
