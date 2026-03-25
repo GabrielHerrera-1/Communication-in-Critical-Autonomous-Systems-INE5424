@@ -11,7 +11,6 @@
 
 // Communication Protocol
 // Protocol é generica e depende do tipo NIC, ja q ela vai chamar os metodos da NIC
-// professor escreveu "private typename NIC::Observer" mas typename nao é permitido em base class specifier. NIC::Observer so pode ser um tipo
 template <typename NIC> class Protocol : private NIC::Observer { // herança privada do Observer que a NIC herdou
 public:
     // numero do protocolo
@@ -91,6 +90,7 @@ protected:
 
 public:
     ~Protocol() { _nic->detach(this, PROTO); }
+    
     static int send(Address from, Address to, const void *data, unsigned int size) {
         if (!_instance || !_instance->_nic) return -1;
 
@@ -146,15 +146,16 @@ public:
     // unsigned int s = NIC::receive(buf, &from.paddr, &to.paddr, data, size)
     // NIC::free(buf)
     // return s;
+
     static void attach(Observer *obs, Address address) {
         _observed.attach(obs, address.port());
     };
+
     static void detach(Observer *obs, Address address) {
         _observed.detach(obs, address.port());
     };
 
 private:
-    // professor escreveu NIC::Protocol_Number sem typename, mas é tipo dependente e precisa de typename em C++17
     void update(typename NIC::Observed *obs, typename NIC::Protocol_Number prot, Buffer *buf)
     {
         (void) obs;
@@ -167,11 +168,8 @@ private:
         }
 
         Header *header = reinterpret_cast<Header*>(buf->data()->payload());
-        bool notified = false;
-        if (header->dst_port() == BROADCAST_PORT)
-            notified = _observed.notify_all(buf);
-        else
-            notified = _observed.notify(header->dst_port(), buf);
+        
+        bool notified = _observed.notify(header->dst_port(), buf);
 
         if (!notified) // to call receive(...);
             _nic->free(buf);
