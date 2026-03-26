@@ -22,14 +22,14 @@ public:
 
     bool send(const Message * message) {
         // cout << "Mensagem enviada: " << message->const_data() << endl;
-        return (_channel->send(_address, Channel::Address::BROADCAST, message->const_data(), message->size()) > 0);
+        return (_channel->send(_address, Channel::Address::BROADCAST, message->data(), message->size()) > 0);
     }
 
     bool receive(Message * message) {
         Buffer * buf = Observer::updated(); // block until a notification is triggered
 
         if (!buf) {
-            print("ERROR: No buffer available");
+            print("ERROR: No aviable buffer");
             return false;
         }
 
