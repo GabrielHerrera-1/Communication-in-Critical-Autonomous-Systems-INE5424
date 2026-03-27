@@ -29,7 +29,7 @@ public:
         Buffer * buf = Observer::updated(); // block until a notification is triggered
 
         if (!buf) {
-            print("ERROR: No aviable buffer");
+            //print("ERROR: No aviable buffer");
             return false;
         }
 
