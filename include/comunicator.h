@@ -14,11 +14,11 @@ public:
     typedef typename Channel::Address Address;
 
 public:
-    Communicator(Channel * channel, Address address): Observer(address.port()), _channel(channel), _address(address) {
-        _channel->attach(this, address.port());
+    Communicator(Channel * channel, Address address): Observer(), _channel(channel), _address(address) {
+        _channel->attach(this, address);
     }
 
-    ~Communicator() { _channel->detach(this, _address.port()); }
+    ~Communicator() { _channel->detach(this, _address); }
 
     bool send(const Message * message) {
         // cout << "Mensagem enviada: " << message->const_data() << endl;

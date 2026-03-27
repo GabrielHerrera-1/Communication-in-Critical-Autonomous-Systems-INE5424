@@ -51,28 +51,6 @@ public:
         // dois end sao iguais se mac e porta batem
         bool operator==(const Address &a) const { return (_paddr == a._paddr) && (_port == a._port); }
 
-        std::string toRawHex() const {
-            static const char hex_chars[] = "0123456789abcdef";
-            char buf[17];
-
-            for (int i = 0; i < 6; ++i) {
-                buf[i * 2]     = hex_chars[(_paddr[i] >> 4) & 0xF];
-                buf[i * 2 + 1] = hex_chars[_paddr[i] & 0xF];
-            }
-            uint8_t p_bytes[2] = {
-                static_cast<uint8_t>((_port >> 8) & 0xFF),
-                static_cast<uint8_t>(_port & 0xFF)
-            };
-
-            for (int i = 0; i < 2; ++i) {
-                buf[12 + (i * 2)]     = hex_chars[(p_bytes[i] >> 4) & 0xF];
-                buf[12 + (i * 2) + 1] = hex_chars[p_bytes[i] & 0xF];
-            }
-
-            buf[16] = '\0';
-            return std::string(buf);
-        }
-
     private:
         friend class Protocol<NIC>;
         Physical_Address _paddr;

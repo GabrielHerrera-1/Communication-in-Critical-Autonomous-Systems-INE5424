@@ -12,6 +12,8 @@ Vehicle::Vehicle(Port port)
         , _communicator(&_protocol, _addr)
         {}
 
+Vehicle::~Vehicle() = default;
+
 Vehicle_Address Vehicle::you_are(){
 
         Message m;
@@ -19,8 +21,7 @@ Vehicle_Address Vehicle::you_are(){
         Vehicle_Address* addr = reinterpret_cast<Vehicle_Address*>(m.data());
 
         if (addr){
-                std::string hex = addr->toRawHex();
-                std::cout << "Received address hex: " << hex << std::endl;
+                std::cout << "Received address hex: " << *addr << std::endl;
         }
         
         return *addr;
