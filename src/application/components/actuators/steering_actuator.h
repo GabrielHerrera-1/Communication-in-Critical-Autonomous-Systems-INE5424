@@ -3,18 +3,18 @@
 
 #include "actuator.h"
 
+// controle do angulo de direcao das rodas
 class Steering_Actuator : public Actuator {
-private:
-    double current_angle = 0.0;
-
 public:
     Steering_Actuator(const std::string& id);
-    ~Steering_Actuator() override;
+    ~Steering_Actuator();
 
     void initialize() override;
     void run() override;
-    void set_target_value(double value) override;
-    ComponentType get_component_type() const override { return ACTUATOR_STEERING; }
+    void apply(double value) override;
+
+private:
+    double _angle_deg = 0.0; // graus, negativo = esquerda
 };
 
 #endif

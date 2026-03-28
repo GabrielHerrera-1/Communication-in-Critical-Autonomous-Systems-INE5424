@@ -3,18 +3,18 @@
 
 #include "actuator.h"
 
+// sistema de frenagem (pressao hidraulica em bar)
 class Braking_Actuator : public Actuator {
-private:
-    double brake_force = 0.0;
-
 public:
     Braking_Actuator(const std::string& id);
-    ~Braking_Actuator() override;
+    ~Braking_Actuator();
 
     void initialize() override;
     void run() override;
-    void set_target_value(double value) override;
-    ComponentType get_component_type() const override { return ACTUATOR_BRAKING; }
+    void apply(double value) override;
+
+private:
+    double _pressure_bar = 0.0;
 };
 
 #endif

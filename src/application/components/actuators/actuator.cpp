@@ -1,7 +1,6 @@
 #include "actuator.h"
 
-Actuator::~Actuator() {}
+Actuator::Actuator(const std::string& id)
+    : Component(id) {}
 
-ActuatorPayload Actuator::serialize_actuator_response(double target_value, int32_t status) const {
-    return {get_component_type(), target_value, status};
-}
+Actuator::~Actuator() {}

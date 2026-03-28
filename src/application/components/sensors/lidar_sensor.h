@@ -3,14 +3,17 @@
 
 #include "sensor.h"
 
+// varredura 3D do ambiente ao redor do veiculo
 class Lidar_Sensor : public Sensor {
 public:
-    Lidar_Sensor(const std::string& id, unsigned int interval = 1000);
-    ~Lidar_Sensor() override;
+    Lidar_Sensor(const std::string& id, unsigned int interval_ms = 100);
+    ~Lidar_Sensor();
 
     void initialize() override;
     void run() override;
-    ComponentType get_component_type() const override { return SENSOR_LIDAR; }
+
+private:
+    int _point_count = 0; // pontos capturados na ultima varredura
 };
 
 #endif

@@ -2,20 +2,24 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <cstdlib>
 
-Lidar_Sensor::Lidar_Sensor(const std::string& id, unsigned int interval)
-    : Sensor(id, interval) {}
+Lidar_Sensor::Lidar_Sensor(const std::string& id, unsigned int interval_ms)
+    : Sensor(id, interval_ms) {}
 
 Lidar_Sensor::~Lidar_Sensor() {}
 
 void Lidar_Sensor::initialize() {
-    std::cout << "[" << component_id << "] Initializing Lidar sensor..." << std::endl;
+    _point_count = 0;
+    std::cout << "[" << _id << "] lidar pronto, aguardando varreduras." << std::endl;
 }
 
 void Lidar_Sensor::run() {
-    // for (int i = 0; i < 5; i++) {
-    //     std::cout << "[" << component_id << "] Scanning environment with Lidar..." << std::endl;
-    //     std::this_thread::sleep_for(std::chrono::milliseconds(update_interval_ms));
-    // }
-    // std::cout << "[" << component_id << "] Finished Lidar scan." << std::endl;
+    for (int i = 0; i < 5; i++) {
+        _point_count = 500 + (rand() % 1500); // simula nuvem de pontos
+        std::cout << "[" << _id << "] varredura " << (i + 1)
+                  << ": " << _point_count << " pontos" << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(_interval_ms));
+    }
+    std::cout << "[" << _id << "] varreduras lidar finalizadas." << std::endl;
 }
