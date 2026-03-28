@@ -10,6 +10,7 @@ Component::Component(const std::string& id)
 }
 
 Component::~Component() {
+    
     delete _comnunicator;
 }
 

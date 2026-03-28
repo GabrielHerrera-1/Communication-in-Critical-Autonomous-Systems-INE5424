@@ -3,7 +3,8 @@
 
 #include <string>
 
-#include "../vehicle.h"
+#include "../../communication/communicator.h"
+#include "../vehicle_protocol.h"
 
 // classe base abstrata para qualquer componente do veiculo (sensor ou atuador)
 // cada componente roda como processo separado via fork()

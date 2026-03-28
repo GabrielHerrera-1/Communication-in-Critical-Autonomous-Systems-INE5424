@@ -49,5 +49,5 @@ void Vehicle::run() {
 }
 
 Vehicle_Protocol::Address Vehicle::generate_addres(){
-    return Vehicle_Protocol::create_address(_port_counter++);
+    return _protocol.create_address(_port_counter++);
 }

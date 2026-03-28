@@ -138,7 +138,7 @@ public:
     // NIC::free(buf)
     // return s;
 
-    static Address create_address(Port port){
+    Address create_address(Port port){
         return Address(_nic->address(),port);
     }
 
