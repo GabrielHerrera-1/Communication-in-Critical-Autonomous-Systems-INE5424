@@ -193,28 +193,56 @@ private:
 
     void recv_loop() {
         while (_running) {
-            Ethernet::Frame frame;
-            int bytes = Engine::engine_receive(&frame, sizeof(frame));
-            if (bytes <= 0) break;
-            // descarta frames que chegam incompletos
-            if (bytes < static_cast<int>(Ethernet::HEADER_SIZE)) continue;
-            // descarta frames que a propria nic enviou
-            if (frame.src() == _address) continue;
+            // vamos receber diretamente no buffer, pra n precisar colocar o frame na stack antes
+            Buffer<Ethernet::Frame> *buf = alloc_buf();
+
+            int bytes = 0;
+
+            if (buf) {
+                // recebendo diretamente no buffer 
+                bytes = Engine::engine_receive(buf->data(), sizeof(Ethernet::Frame));
+            } else {
+                // alloc falhou, pool cheio
+
+                // frame temporario, so pra n deixar de consumir o pacote
+                Ethernet::Frame temp;
+
+                // so pra drenar o pacote do socket
+                bytes = Engine::engine_receive(&temp, sizeof(Ethernet::Frame));
+                if (bytes <= 0) {
+                    break;
+                }
+
+                // como pool ta cheio, vai pra proxima iteração do loop
+                continue;
+            }
+
+            if (bytes <= 0) {
+                free(buf);
+                break;
+            }
+
+            Ethernet::Frame *frame = buf->data();
+
+            // descarta frames incompletos
+            if (bytes < static_cast<int>(Ethernet::HEADER_SIZE)) {
+                free(buf);
+                continue;
+            }
+
+            // descarta o que a propria nic enviou
+            if (frame->src() == _address) {
+                free(buf);
+                continue;
+            }
 
             Protocol_Number prot = frame.type();
 
             _statistics.rx_packets++;
             _statistics.rx_bytes += bytes;
 
-            // so agora aloca buffer e copia
-            Buffer<Ethernet::Frame> *buf = alloc_buf();
-            if (!buf) continue; // pool cheio, descarta
-
-            memcpy(buf->data(), &frame, bytes);
             buf->size(bytes - Ethernet::HEADER_SIZE);
 
-            // frame chegou da rede e ta no buffer, agora nic precisa entregar ele pra quem se interessou
-            // o if(!...) é pro caso que ninguem estava registrado pra esse ethertype, isso faz com que o buffer fique travado a toa
             if (!Observed::notify(prot, buf)) {
                 free(buf);
             }
