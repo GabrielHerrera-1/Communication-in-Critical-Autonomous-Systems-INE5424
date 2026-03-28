@@ -5,6 +5,7 @@
 #include "../network/ethernet.h"
 #include "../network/engine/raw_socket_engine.h"
 #include "../channel/protocol.h"
+#include "../communication/communicator.h"
 #include "vehicle_protocol.h"
 #include "components/component.h"
 #include <vector>
@@ -27,6 +28,11 @@ private:
     Vehicle_Protocol _protocol;
 
     std::vector<Component*> _components;
+
+    Vehicle_Protocol::Address generate_addres();
+
+    Vehicle_Protocol::Port _port_counter = 0;
+
 };
 
 #endif
