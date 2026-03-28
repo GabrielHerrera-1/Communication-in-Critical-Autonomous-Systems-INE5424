@@ -3,11 +3,11 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
-#include "ethernet.h"
-#include "observers/conditional_data_observer.h"
-#include "observers/concurrent_observer.h"
-#include "buffer.h"
-#include "traits.h"
+#include "../network/ethernet.h"
+#include "../core/observers/conditional_data_observer.h"
+#include "../core/observers/concurrent_observer.h"
+#include "../core/buffer.h"
+#include "../core/traits.h"
 #include <cstring>
 
 // Communication Protocol

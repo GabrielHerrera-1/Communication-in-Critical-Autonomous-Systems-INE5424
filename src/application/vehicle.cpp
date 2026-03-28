@@ -1,4 +1,4 @@
-#include "../include/vehicle/vehicle.h"
+#include "vehicle.h"
 #include <sys/wait.h>
 #include <iostream>
 #include <thread>

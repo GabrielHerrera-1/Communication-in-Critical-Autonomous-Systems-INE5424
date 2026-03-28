@@ -1,11 +1,11 @@
     #ifndef VEHICLE
     #define VEHICLE
 
-    #include "../nic.h"
-    #include "../ethernet.h"
-    #include "../engine/raw_socket_engine.h"
-    #include "../protocol.h"
-    #include "../comunicator.h"
+    #include "../network/nic.h"
+    #include "../network/ethernet.h"
+    #include "../network/engine/raw_socket_engine.h"
+    #include "../channel/protocol.h"
+    #include "../communication/communicator.h"
     #include "vehicle_protocol.h"
 
     class Vehicle {

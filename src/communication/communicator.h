@@ -2,7 +2,7 @@
 #define COMUNICATOR_H
 
 #include "message.h"
-#include "observers/concurrent_observer.h"
+#include "../core/observers/concurrent_observer.h"
 
 template <typename Channel>
 class Communicator: public Concurrent_Observer<typename Channel::Observer::Observed_Data, typename Channel::Observer::Observing_Condition> {

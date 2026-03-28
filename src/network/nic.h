@@ -2,9 +2,9 @@
 #define NIC_H
 
 #include "ethernet.h"
-#include "observers/conditional_data_observer.h"
-#include "buffer.h"
-#include "traits.h"
+#include "../core/observers/conditional_data_observer.h"
+#include "../core/buffer.h"
+#include "../core/traits.h"
 #include <pthread.h>
 #include <mutex>
 #include <cstring>
@@ -236,7 +236,7 @@ private:
                 continue;
             }
 
-            Protocol_Number prot = frame.type();
+            Protocol_Number prot = frame->type();
 
             _statistics.rx_packets++;
             _statistics.rx_bytes += bytes;

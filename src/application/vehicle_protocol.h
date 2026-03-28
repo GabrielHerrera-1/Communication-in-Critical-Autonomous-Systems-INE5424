@@ -1,8 +1,8 @@
 #ifndef VEHICLE_PROTOCOL
 #define VEHICLE_PROTOCOL
 
-#include "../nic.h"
-#include "../protocol.h"
+#include "../network/nic.h"
+#include "../channel/protocol.h"
 
 // talvez fazer com que a engine seja generica
 class Vehicle_Protocol : public Protocol<NIC<RawSocketEngine>> {
