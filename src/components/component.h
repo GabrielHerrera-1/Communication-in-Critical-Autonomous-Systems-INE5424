@@ -1,9 +1,9 @@
-#ifndef COMPONENT_HPP
-#define COMPONENT_HPP
+#ifndef COMPONENT_H
+#define COMPONENT_H
 
 #include <string>
 #include <cstddef>
-#include "component_types.hpp"
+#include "component_types.h"
 
 class Component {
 protected:

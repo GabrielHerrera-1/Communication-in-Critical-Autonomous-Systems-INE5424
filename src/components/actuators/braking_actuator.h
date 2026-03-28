@@ -1,7 +1,7 @@
-#ifndef BRAKING_ACTUATOR_HPP
-#define BRAKING_ACTUATOR_HPP
+#ifndef BRAKING_ACTUATOR_H
+#define BRAKING_ACTUATOR_H
 
-#include "actuator.hpp"
+#include "actuator.h"
 
 class Braking_Actuator : public Actuator {
 private:

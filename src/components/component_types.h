@@ -1,5 +1,5 @@
-#ifndef COMPONENT_TYPES_HPP
-#define COMPONENT_TYPES_HPP
+#ifndef COMPONENT_TYPES_H
+#define COMPONENT_TYPES_H
 
 #include <cstdint>
 

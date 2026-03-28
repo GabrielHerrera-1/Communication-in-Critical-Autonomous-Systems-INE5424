@@ -1,7 +1,7 @@
-#ifndef CAMERA_SENSOR_HPP
-#define CAMERA_SENSOR_HPP
+#ifndef CAMERA_SENSOR_H
+#define CAMERA_SENSOR_H
 
-#include "sensor.hpp"
+#include "sensor.h"
 
 class Camera_Sensor : public Sensor {
 public:

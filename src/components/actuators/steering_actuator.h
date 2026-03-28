@@ -1,7 +1,7 @@
-#ifndef STEERING_ACTUATOR_HPP
-#define STEERING_ACTUATOR_HPP
+#ifndef STEERING_ACTUATOR_H
+#define STEERING_ACTUATOR_H
 
-#include "actuator.hpp"
+#include "actuator.h"
 
 class Steering_Actuator : public Actuator {
 private:

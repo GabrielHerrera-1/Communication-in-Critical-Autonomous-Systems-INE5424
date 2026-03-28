@@ -1,3 +1,3 @@
-#include "sensor.hpp"
+#include "sensor.h"
 
 Sensor::~Sensor() {}

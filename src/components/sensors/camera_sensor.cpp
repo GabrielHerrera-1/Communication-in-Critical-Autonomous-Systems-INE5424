@@ -1,4 +1,4 @@
-#include "camera_sensor.hpp"
+#include "camera_sensor.h"
 #include <iostream>
 #include <thread>
 #include <chrono>

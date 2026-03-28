@@ -1,7 +1,7 @@
-#ifndef RADAR_SENSOR_HPP
-#define RADAR_SENSOR_HPP
+#ifndef RADAR_SENSOR_H
+#define RADAR_SENSOR_H
 
-#include "sensor.hpp"
+#include "sensor.h"
 
 class Radar_Sensor : public Sensor {
 public:

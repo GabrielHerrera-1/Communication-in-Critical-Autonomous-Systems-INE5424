@@ -1,4 +1,4 @@
-#include "actuator.hpp"
+#include "actuator.h"
 
 Actuator::~Actuator() {}
 

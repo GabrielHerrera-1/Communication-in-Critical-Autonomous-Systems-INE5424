@@ -1,7 +1,7 @@
-#ifndef SPEED_SENSOR_HPP
-#define SPEED_SENSOR_HPP
+#ifndef SPEED_SENSOR_H
+#define SPEED_SENSOR_H
 
-#include "sensor.hpp"
+#include "sensor.h"
 
 class Speed_Sensor : public Sensor {
 public:

@@ -1,7 +1,7 @@
-#ifndef SENSOR_HPP
-#define SENSOR_HPP
+#ifndef SENSOR_H
+#define SENSOR_H
 
-#include "../component.hpp"
+#include "../component.h"
 
 class Sensor : public Component {
 protected:

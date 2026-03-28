@@ -1,7 +1,7 @@
-#ifndef POWERTRAIN_ACTUATOR_HPP
-#define POWERTRAIN_ACTUATOR_HPP
+#ifndef POWERTRAIN_ACTUATOR_H
+#define POWERTRAIN_ACTUATOR_H
 
-#include "actuator.hpp"
+#include "actuator.h"
 
 class Powertrain_Actuator : public Actuator {
 private:

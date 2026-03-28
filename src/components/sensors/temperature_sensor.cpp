@@ -1,4 +1,4 @@
-#include "temperature_sensor.hpp"
+#include "temperature_sensor.h"
 #include <iostream>
 #include <thread>
 #include <chrono>

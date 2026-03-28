@@ -1,4 +1,4 @@
-#include "distance_sensor.hpp"
+#include "distance_sensor.h"
 #include <iostream>
 #include <thread>
 #include <chrono>

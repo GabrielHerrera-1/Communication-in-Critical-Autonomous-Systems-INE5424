@@ -1,7 +1,7 @@
-#ifndef LIDAR_SENSOR_HPP
-#define LIDAR_SENSOR_HPP
+#ifndef LIDAR_SENSOR_H
+#define LIDAR_SENSOR_H
 
-#include "sensor.hpp"
+#include "sensor.h"
 
 class Lidar_Sensor : public Sensor {
 public:

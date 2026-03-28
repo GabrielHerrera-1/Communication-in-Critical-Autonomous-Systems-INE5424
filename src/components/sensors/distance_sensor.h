@@ -1,7 +1,7 @@
-#ifndef DISTANCE_SENSOR_HPP
-#define DISTANCE_SENSOR_HPP
+#ifndef DISTANCE_SENSOR_H
+#define DISTANCE_SENSOR_H
 
-#include "sensor.hpp"
+#include "sensor.h"
 
 class Distance_Sensor : public Sensor {
 public:

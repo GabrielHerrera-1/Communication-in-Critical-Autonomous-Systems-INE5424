@@ -1,4 +1,4 @@
-#include "speed_sensor.hpp"
+#include "speed_sensor.h"
 #include <iostream>
 #include <thread>
 #include <chrono>

@@ -1,7 +1,7 @@
-#ifndef ACTUATOR_HPP
-#define ACTUATOR_HPP
+#ifndef ACTUATOR_H
+#define ACTUATOR_H
 
-#include "../component.hpp"
+#include "../component.h"
 
 class Actuator : public Component {
 public:

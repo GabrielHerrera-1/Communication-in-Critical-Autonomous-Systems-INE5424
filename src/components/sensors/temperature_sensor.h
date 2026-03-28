@@ -1,7 +1,7 @@
-#ifndef TEMPERATURE_SENSOR_HPP
-#define TEMPERATURE_SENSOR_HPP
+#ifndef TEMPERATURE_SENSOR_H
+#define TEMPERATURE_SENSOR_H
 
-#include "sensor.hpp"
+#include "sensor.h"
 
 class Temperature_Sensor : public Sensor {
 public:

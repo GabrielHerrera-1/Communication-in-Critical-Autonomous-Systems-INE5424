@@ -1,4 +1,4 @@
-#include "component.hpp"
+#include "component.h"
 #include <iostream>
 
 Component::Component(const std::string& id)

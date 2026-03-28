@@ -1,4 +1,4 @@
-#include "lidar_sensor.hpp"
+#include "lidar_sensor.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
