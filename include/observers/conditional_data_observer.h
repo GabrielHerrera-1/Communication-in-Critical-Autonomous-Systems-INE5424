@@ -24,7 +24,7 @@ public:
     ~Conditional_Data_Observer() {}
 
     // = 0 torna a classe abstrata. primeiro parametro é o observed que chamou o update
-    virtual void update(Conditionally_Data_Observed<T, Condition>* obs, Condition c, T * t) = 0;
+    virtual void update(Condition c, T * t) = 0;
 };
 
 template <typename T, typename Condition>
@@ -79,7 +79,7 @@ public:
         bool notified = false;
         for (auto& e : snapshot){
             if (e.condition == c){
-                e.observer->update(this, c, d);
+                e.observer->update(c, d);
                 notified = true;
             }
         }

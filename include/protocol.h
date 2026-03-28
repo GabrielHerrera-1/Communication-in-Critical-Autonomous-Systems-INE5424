@@ -157,10 +157,9 @@ public:
     };
 
 private:
-    void update(typename NIC::Observed *obs, typename NIC::Protocol_Number prot, Buffer *buf)
+    // removemos o param obs porque não é usado
+    void update(typename NIC::Protocol_Number prot, Buffer *buf)
     {
-        (void) obs;
-        (void) prot;
 
         if (!buf) return;
         if (buf->size() < sizeof(Header)) {

@@ -26,7 +26,7 @@ public:
 
     ~Concurrent_Observer() {}
 
-    void update(Concurrent_Observed<D, C>* obs, C c, D * d) {
+    void update(C c, D * d) {
         // lock_guard em vez de lock/unlock manual: se funcao lançar exceção,
         // o destrutor do lock_guard garante que o mutex é destravado
         std::lock_guard<std::mutex> lock(_mtx);
@@ -100,7 +100,7 @@ public:
         bool notified = false;
         for (auto& e : snapshot){
             if (e.condition == c){
-                e.observer->update(this, c, d);
+                e.observer->update(c, d);
                 notified = true;
             }
         }
