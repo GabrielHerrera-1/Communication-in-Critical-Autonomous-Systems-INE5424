@@ -1,0 +1,1 @@
+qemu-system-riscv64 -machine virt -nographic -kernel kernel/Image -initrd initramfs_tests.cpio --append "root=/dev/ram"
