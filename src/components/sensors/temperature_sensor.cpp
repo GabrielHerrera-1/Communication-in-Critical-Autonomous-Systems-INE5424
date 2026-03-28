@@ -1,0 +1,21 @@
+#include "temperature_sensor.hpp"
+#include <iostream>
+#include <thread>
+#include <chrono>
+
+Temperature_Sensor::Temperature_Sensor(const std::string& id, unsigned int interval)
+    : Sensor(id, interval) {}
+
+Temperature_Sensor::~Temperature_Sensor() {}
+
+void Temperature_Sensor::initialize() {
+    std::cout << "[" << component_id << "] Initializing Temperature sensor..." << std::endl;
+}
+
+void Temperature_Sensor::run() {
+    // for (int i = 0; i < 5; i++) {
+    //     std::cout << "[" << component_id << "] Reading temperature..." << std::endl;
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(update_interval_ms));
+    // }
+    // std::cout << "[" << component_id << "] Finished reading temperature." << std::endl;
+}
