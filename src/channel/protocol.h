@@ -22,7 +22,6 @@ public:
     // MAC da NIC
     typedef typename NIC::Address Physical_Address;
     typedef uint16_t Port;
-    static const Port BROADCAST_PORT = 0xFFFF;
     // a camada Protocol -> Communicator precisa ser concorrente porque o
     // Communicator bloqueia em receive() e acorda por semaforo.
     typedef Concurrent_Observer<Buffer, Port> Observer;
@@ -31,7 +30,6 @@ public:
     // address aqui é um endereco composto: mac + porta
     class Address {
     public:
-        static const Address BROADCAST;
         // Null serve pra construir endereco nulo e comparar
         enum Null { NULL_ADDR };
 
@@ -41,11 +39,9 @@ public:
         Address(const Null &) : _paddr(), _port(0) {}
         // construtor padrao, combina MAC com porta
         Address(Physical_Address paddr, Port port) : _paddr(paddr), _port(port) {}
-        // broadcast fisico sempre preserva a porta logica do componente
+        // broadcast fisico sempre preserva a porta logica do endpoint
         static Address broadcast(Port port) { return Address(Ethernet::Address::BROADCAST, port); }
 
-        // getters
-        // nao coloquei getter pro paddr pra isolar o MAC
         Port port() const { return _port; }
 
         // retorna true se pelo menos um dos dois não for zero
@@ -61,7 +57,6 @@ public:
 
     class Header {
     public:
-        // getters e setters
         Port src_port() const { return _src_port; }
         void src_port(Port p) { _src_port = p; }
         Port dst_port() const { return _dst_port; }
@@ -77,9 +72,12 @@ public:
     {
     public:
         Packet() = default;
-        Header *header() { return this; }
+        Header *header() { return static_cast<Header *>(this); }
+        const Header *header() const { return static_cast<const Header *>(this); }
         template <typename T>
         T *data() { return reinterpret_cast<T *>(&_data); }
+        template <typename T>
+        const T *data() const { return reinterpret_cast<const T *>(&_data); }
 
     private:
         Data _data;
@@ -100,24 +98,15 @@ public:
         Buffer *buf = _instance->_nic->alloc(to._paddr, PROTO, sizeof(Header) + size);
         if (!buf) return -1;
 
-        // pegar ponteiro pro payload do frame ethernet
-        // reinterpret_cast --> trate esse endereço de memoria (buf->data()->payload(), que é *void) como se fosse um ponteiro pra Header
-        // então eu pego o começo desse payload e escrevo o header
-        // significa: pegue esse espaço vazio e trate o começo dele como um header
-        Header *header = reinterpret_cast<Header*>(buf->data()->payload());
-        header->src_port(from.port());
-        header->dst_port(to.port());
-
-        // copia os dados da aplicacao para logo depois do header na memoria
-        // conversao pra char porque char anda de byte em byte, header anda em blocos de sizeof(Header)
-        // + sizeof(Header) é aritmetica de ponteiro. vai pro espaço depois do header
-        memcpy(reinterpret_cast<char*>(header) + sizeof(Header), data, size);
+        Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
+        packet->header()->src_port(from.port());
+        packet->header()->dst_port(to.port());
+        if (data && size)
+            memcpy(packet->template data<unsigned char>(), data, size);
 
         return _instance->_nic->send(buf);
     };
 
-    // me parece que o from deveria ser ponteiro, porque no codigo do communicator que o professor deu como base
-    // ele chama receive com &from. por isso troquei aqui
     static int receive(Buffer *buf, Address *from, void *data, unsigned int size) {
         if (!_instance || !_instance->_nic || !buf) return -1;
         if (buf->size() < sizeof(Header)) {
@@ -125,19 +114,18 @@ public:
             return -1;
         }
 
-        // aqui o communicator ja passou o buffer pro Protocol, vamos so desmontar esse buffer
         Ethernet::Address src_mac, dst_mac;
         _instance->_nic->unmarshal(buf, &src_mac, &dst_mac, nullptr, 0);
 
-        Header *header = reinterpret_cast<Header*>(buf->data()->payload());
+        Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         if (from)
-            *from = Address(src_mac, header->src_port());
+            *from = Address(src_mac, packet->header()->src_port());
 
         unsigned int data_size = buf->size() - sizeof(Header);
         if (data_size > size)
             data_size = size;
         if (data && data_size)
-            memcpy(data, reinterpret_cast<char*>(header) + sizeof(Header), data_size);
+            memcpy(data, packet->template data<unsigned char>(), data_size);
 
         _instance->_nic->free(buf);
         return static_cast<int>(data_size);
@@ -173,9 +161,9 @@ private:
             return;
         }
 
-        Header *header = reinterpret_cast<Header*>(buf->data()->payload());
-        
-        bool notified = _observed.notify(header->dst_port(), buf);
+        Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
+
+        bool notified = _observed.notify(packet->header()->dst_port(), buf);
 
         if (!notified) // to call receive(...);
             _nic->free(buf);
@@ -187,12 +175,6 @@ private:
     static Observed _observed;
     static Protocol* _instance; // ponteiro pro singleton
 };
-
-// inicializar BROADCAST
-template <typename NIC>
-const typename Protocol<NIC>::Address Protocol<NIC>::Address::BROADCAST(
-    Ethernet::Address::BROADCAST, Protocol<NIC>::BROADCAST_PORT
-);
 
 // inicializacao dos static
 template <typename NIC> Protocol<NIC>* Protocol<NIC>::_instance = nullptr;
