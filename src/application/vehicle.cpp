@@ -14,7 +14,8 @@ Vehicle::~Vehicle() {
 
 void Vehicle::add_component(Component* component) {
     _components.push_back(component);
-    component->set_address(generate_addres());
+    Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&_protocol,generate_addres());
+    component->set_comunicator(communicator);
 }
 
 void Vehicle::initialize() {
