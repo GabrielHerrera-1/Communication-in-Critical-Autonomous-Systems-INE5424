@@ -7,7 +7,6 @@
 // talvez fazer com que a engine seja generica
 class Vehicle_Protocol : public Protocol<NIC<RawSocketEngine>> {
 public:
-    
     Vehicle_Protocol(NIC<RawSocketEngine> * nic) : Protocol<NIC<RawSocketEngine>>(nic) {}
 };
 
