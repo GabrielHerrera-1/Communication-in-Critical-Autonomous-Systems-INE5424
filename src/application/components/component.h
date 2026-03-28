@@ -3,8 +3,12 @@
 
 #include <string>
 
+#include "../vehicle.h"
+
 // classe base abstrata para qualquer componente do veiculo (sensor ou atuador)
 // cada componente roda como processo separado via fork()
+
+// no futuro um componente deve ser um template, onde é passado o tpo do comunicator que ele tem
 class Component {
 public:
     Component(const std::string& id);
@@ -17,8 +21,14 @@ public:
 
     const std::string& id() const;
 
+    // CComunicator::Protocol::Port
+    void set_comunicator(Communicator<Vehicle_Protocol>* Communicator);
+
 protected:
     std::string _id;
+    
+    Communicator<Vehicle_Protocol>* _comnunicator;
+    
 };
 
 #endif

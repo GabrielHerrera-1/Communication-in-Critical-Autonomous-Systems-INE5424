@@ -14,6 +14,7 @@ Vehicle::~Vehicle() {
 
 void Vehicle::add_component(Component* component) {
     _components.push_back(component);
+    component->set_address(generate_addres());
 }
 
 void Vehicle::initialize() {
@@ -44,4 +45,8 @@ void Vehicle::run() {
     }
 
     std::cout << "[Vehicle] encerrado." << std::endl;
+}
+
+Vehicle_Protocol::Address Vehicle::generate_addres(){
+    return Vehicle_Protocol::create_address(_port_counter++);
 }
