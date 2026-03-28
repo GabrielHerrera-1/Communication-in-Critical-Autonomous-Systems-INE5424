@@ -1,0 +1,1 @@
+qemu-system-riscv64 -machine virt -nographic -kernel kernel/Image -initrd initramfs_tests.cpio -netdev socket,id=net0,mcast=230.0.0.1:1234 -device virtio-net-device,netdev=net0,mac=52:54:00:00:00:02 --append "root=/dev/ram"

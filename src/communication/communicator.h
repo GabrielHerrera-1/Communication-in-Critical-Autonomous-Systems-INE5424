@@ -21,8 +21,8 @@ public:
     ~Communicator() { _channel->detach(this, _address); }
 
     bool send(const Message * message) {
-        // cout << "Mensagem enviada: " << message->const_data() << endl;
-        return (_channel->send(_address, Channel::Address::BROADCAST, message->data(), message->size()) > 0);
+        return (_channel->send(_address, Channel::Address::broadcast(_address.port()),
+                               message->data(), message->size()) > 0);
     }
 
     bool receive(Message * message) {

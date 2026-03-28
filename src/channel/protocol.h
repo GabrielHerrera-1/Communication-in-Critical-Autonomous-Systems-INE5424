@@ -41,6 +41,8 @@ public:
         Address(const Null &) : _paddr(), _port(0) {}
         // construtor padrao, combina MAC com porta
         Address(Physical_Address paddr, Port port) : _paddr(paddr), _port(port) {}
+        // broadcast fisico sempre preserva a porta logica do componente
+        static Address broadcast(Port port) { return Address(Ethernet::Address::BROADCAST, port); }
 
         // getters
         // nao coloquei getter pro paddr pra isolar o MAC
