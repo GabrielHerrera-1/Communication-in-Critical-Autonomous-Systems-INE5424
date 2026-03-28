@@ -8,7 +8,7 @@ public:
 
     static const unsigned int MAX_SIZE = 1400;
 
-    Message() : _size(0) {
+    Message() : _size(MAX_SIZE) {
         memset(_payload, 0, sizeof(_payload));
     }
 
