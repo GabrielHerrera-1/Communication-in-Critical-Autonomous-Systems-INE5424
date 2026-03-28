@@ -11,42 +11,51 @@ WORKDIR = work
 OUTPUT_DIR = ..
 
 CXX = riscv64-linux-gnu-g++
-CXXFLAGS = -static -I$(SRC_DIR)
+# Added -MMD -MP to generate .d dependency files automatically
+CXXFLAGS = -static -I$(SRC_DIR) -MMD -MP
 
 INITRAMFS = kernel/initramfs.cpio
 NEW_INITRAMFS = $(OUTPUT_DIR)/initramfs_tests.cpio
 
+# Recursively find all .cpp files in src
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(SRCS:.cpp=.o)
+# Collect all generated dependency files
+DEPS := $(SRCS:.cpp=.d) $(wildcard $(TEST_DIR)/*.d)
 
 TEST_SRCS := $(wildcard $(TEST_DIR)/*.cpp)
-TEST_BINS := $(TEST_SRCS:.cpp=)
+TEST_BINS := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(TEST_DIR)/%)
+
+.PHONY: all clean
 
 all: $(NEW_INITRAMFS)
 
+# Compile .cpp to .o and generate .d files
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# Link test binaries
 $(TEST_DIR)/%: $(TEST_DIR)/%.cpp $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(NEW_INITRAMFS): $(TEST_BINS)
 	rm -rf $(WORKDIR)
-	mkdir $(WORKDIR)
-
+	mkdir -p $(WORKDIR)
+	# Extract old initramfs
 	cd $(WORKDIR) && cpio -id < ../$(INITRAMFS)
-
-	
-	for bin in $(TEST_BINS); do \
-		cp $$bin $(WORKDIR)/; \
-	done
-
-	cd $(WORKDIR) && find . | cpio -o -H newc > $(NEW_INITRAMFS)
-
+	# Copy new test binaries into the workdir
+	cp $(TEST_BINS) $(WORKDIR)/
+	# Create the new initramfs
+	cd $(WORKDIR) && find . | cpio -o -H newc > ../$(NEW_INITRAMFS)
 	rm -rf $(WORKDIR)
 
 clean:
 	find $(SRC_DIR) -name "*.o" -delete
+	find $(SRC_DIR) -name "*.d" -delete
 	rm -f $(TEST_BINS)
-	rm -f $(OUTPUT_DIR)/*.cpio
+	rm -f $(TEST_DIR)/*.d
+	rm -f $(NEW_INITRAMFS)
 	rm -rf $(WORKDIR)
+
+# Include the dependency files so make knows about header changes
+-include $(DEPS)

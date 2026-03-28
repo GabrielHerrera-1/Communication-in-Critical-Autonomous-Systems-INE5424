@@ -36,7 +36,7 @@ void Vehicle::run() {
         } else if (pid > 0) {
             pids.push_back(pid);
         } else {
-            std::cerr << "[Vehicle] fork falhou para " << c->get_id() << std::endl;
+            std::cerr << "[Vehicle] fork falhou para " << c->id() << std::endl;
         }
     }
 
