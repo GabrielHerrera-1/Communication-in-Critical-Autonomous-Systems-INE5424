@@ -4,7 +4,7 @@
 #include <iostream>
 
 int main(){
-    constexpr Vehicle_Protocol::Port COMPONENT_PORT = 0x0404;
+    constexpr Vehicle_Protocol::Port COMPONENT_PORT = 0x0000;
 
     NIC<RawSocketEngine> nic;
     Vehicle_Protocol protocol(&nic);
