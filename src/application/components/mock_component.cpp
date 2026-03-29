@@ -45,7 +45,7 @@ void Mock_Component::send_all_messages() {
         build_payload(payload, sizeof(payload), round);
 
         Message message(payload, std::strlen(payload) + 1);
-        if (!_comnunicator->send(&message)) {
+        if (!_endpoint || !_endpoint->send(&message)) {
             std::cerr << "[" << _id << "]" <<" falha ao enviar " << payload << std::endl;
             std::exit(1);
         }
@@ -67,7 +67,7 @@ void Mock_Component::receive_all_messages(){
     while (receive_count < expected_total) {
         std::cout << "[" << _id << "]" << " pronto para receber o primeiro frame " << std::endl;
         Message message;
-        if (!_comnunicator->receive(&message)) {
+        if (!_endpoint || !_endpoint->receive(&message)) {
             std::cerr << "[" << _id << "]" <<" falha ao receber " << std::endl;
             std::exit(1);
         }

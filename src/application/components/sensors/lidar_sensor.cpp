@@ -30,7 +30,8 @@ void Lidar_Sensor::run() {
 
         std::cout<< str << std::endl;
 
-        _comnunicator->send(&msg);
+        if (_endpoint)
+            _endpoint->send(&msg);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(_interval_ms));
     }
@@ -40,5 +41,6 @@ void Lidar_Sensor::run() {
 
     Message msg((void*)str.data(),str.size());
 
-    _comnunicator->send(&msg);
+    if (_endpoint)
+        _endpoint->send(&msg);
 }

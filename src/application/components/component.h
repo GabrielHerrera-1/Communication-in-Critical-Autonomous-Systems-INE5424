@@ -1,17 +1,17 @@
 #ifndef COMPONENT_H
 #define COMPONENT_H
 
+#include <cstdint>
 #include <string>
 
-#include "../../communication/communicator.h"
-#include "../vehicle_protocol.h"
+#include "../../communication/communication_endpoint.h"
 
 // classe base abstrata para qualquer componente do veiculo (sensor ou atuador)
 // cada componente roda como processo separado via fork()
-
-// no futuro um componente deve ser um template, onde é passado o tpo do comunicator que ele tem
 class Component {
 public:
+    typedef uint16_t Port;
+
     Component(const std::string& id);
     virtual ~Component();
 
@@ -22,14 +22,15 @@ public:
 
     const std::string& id() const;
 
-    // CComunicator::Protocol::Port
-    void set_comunicator(Communicator<Vehicle_Protocol>* Communicator);
-    void set_port(Vehicle_Protocol::Port port);
+    // O endpoint concreto eh injetado pelo ambiente de execucao.
+    // Assim o componente nao conhece Vehicle_Protocol nem RawSocketEngine.
+    void set_endpoint(Communication_Endpoint * endpoint);
+    void set_port(Port port);
 
 protected:
     std::string _id;
-    Vehicle_Protocol::Port _port;
-    Communicator<Vehicle_Protocol>* _comnunicator;
+    Port _port;
+    Communication_Endpoint * _endpoint;
     
 };
 

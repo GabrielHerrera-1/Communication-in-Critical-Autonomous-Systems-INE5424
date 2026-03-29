@@ -5,6 +5,7 @@
 #include "../network/ethernet.h"
 #include "../network/engine/raw_socket_engine.h"
 #include "../channel/protocol.h"
+#include "../communication/channel_endpoint.h"
 #include "vehicle_protocol.h"
 #include "components/component.h"
 #include <vector>
@@ -12,7 +13,7 @@
 class Vehicle {
 public:
 
-    typedef std::pair<Component*,Vehicle_Protocol::Port> Component_Port_Pair;
+    typedef std::pair<Component*, Component::Port> Component_Port_Pair;
 
     Vehicle();
     ~Vehicle();
@@ -20,7 +21,7 @@ public:
     // adiciona componente (vehicle assume ownership)
     void add_component(Component* component);
     // adicona component e gera porta explicitamente
-    void add_component(Component* component, Vehicle_Protocol::Port port);
+    void add_component(Component* component, Component::Port port);
     // inicializa todos os componentes
     void initialize();
     // fork de cada componente em um processo separado
@@ -30,7 +31,7 @@ private:
 
     std::vector<Component_Port_Pair> _components;
 
-    Vehicle_Protocol::Port _port_counter = 0;
+    Component::Port _port_counter = 0;
 
 };
 

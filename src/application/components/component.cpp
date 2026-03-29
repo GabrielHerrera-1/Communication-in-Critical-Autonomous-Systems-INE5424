@@ -4,24 +4,23 @@
 
 Component::Component(const std::string& id)
     : _id(id),
-    _comnunicator{}
+      _port(0),
+      _endpoint{}
 {
     
 }
 
 Component::~Component() {
-    
-    delete _comnunicator;
 }
 
 const std::string& Component::id() const {
     return _id;
 }
 
-void Component::set_comunicator(Communicator<Vehicle_Protocol>* comunicator){
-    _comnunicator = comunicator;
+void Component::set_endpoint(Communication_Endpoint * endpoint){
+    _endpoint = endpoint;
 }
 
-void Component::set_port(Vehicle_Protocol::Port port){
+void Component::set_port(Port port){
     _port = port;
 }

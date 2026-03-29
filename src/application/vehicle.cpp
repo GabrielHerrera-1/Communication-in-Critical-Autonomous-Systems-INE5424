@@ -1,5 +1,6 @@
 #include "vehicle.h"
 #include <sys/wait.h>
+#include <cstdlib>
 #include <iostream>
 
 Vehicle::Vehicle(){}
@@ -10,16 +11,11 @@ Vehicle::~Vehicle() {
 }
 
 void Vehicle::add_component(Component* component) {
-    Vehicle_Protocol::Port port = _port_counter++;
+    Component::Port port = _port_counter++;
     _components.push_back(Component_Port_Pair(component,port));
-    /*
-    Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&_protocol,_protocol.create_address(port));
-    component->set_comunicator(communicator);
-    component->set_port(port);
-    */
 }
 
-void Vehicle::add_component(Component* component, Vehicle_Protocol::Port port) {
+void Vehicle::add_component(Component* component, Component::Port port) {
     _components.push_back(Component_Port_Pair(component,port));
 }
 
@@ -30,6 +26,7 @@ void Vehicle::initialize() {
 
 void Vehicle::run() {
     std::vector<pid_t> pids;
+    bool failed = false;
 
     // fork de cada componente para processo separado
     for (auto c : _components) {
@@ -37,8 +34,8 @@ void Vehicle::run() {
         if (pid == 0) {
             NIC<RawSocketEngine> nic;
             Vehicle_Protocol protocol(&nic);
-            Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&protocol,protocol.create_address(c.second));
-            c.first->set_comunicator(communicator);
+            Channel_Endpoint<Vehicle_Protocol> endpoint(&protocol, protocol.create_address(c.second));
+            c.first->set_endpoint(&endpoint);
             c.first->set_port(c.second);
             c.first->run();
             _exit(0);
@@ -53,6 +50,15 @@ void Vehicle::run() {
     for (pid_t pid : pids) {
         int status;
         waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            failed = true;
+            std::cerr << "[Vehicle] componente terminou com falha." << std::endl;
+        }
+    }
+
+    if (failed) {
+        std::cerr << "[Vehicle] encerrado com falha." << std::endl;
+        std::exit(1);
     }
 
     std::cout << "[Vehicle] encerrado." << std::endl;
