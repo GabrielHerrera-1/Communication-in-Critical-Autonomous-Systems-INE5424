@@ -21,3 +21,7 @@ const std::string& Component::id() const {
 void Component::set_comunicator(Communicator<Vehicle_Protocol>* comunicator){
     _comnunicator = comunicator;
 }
+
+void Component::set_port(Vehicle_Protocol::Port port){
+    _port = port;
+}

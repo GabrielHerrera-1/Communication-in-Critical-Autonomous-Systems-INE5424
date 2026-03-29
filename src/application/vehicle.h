@@ -11,11 +11,16 @@
 
 class Vehicle {
 public:
+
+    typedef std::pair<Component*,Vehicle_Protocol::Port> Component_Port_Pair;
+
     Vehicle();
     ~Vehicle();
 
     // adiciona componente (vehicle assume ownership)
     void add_component(Component* component);
+    // adicona component e gera porta explicitamente
+    void add_component(Component* component, Vehicle_Protocol::Port port);
     // inicializa todos os componentes
     void initialize();
     // fork de cada componente em um processo separado
@@ -26,9 +31,7 @@ private:
     NIC<RawSocketEngine> _nic;
     Vehicle_Protocol _protocol;
 
-    std::vector<Component*> _components;
-
-    Vehicle_Protocol::Address generate_addres();
+    std::vector<Component_Port_Pair> _components;
 
     Vehicle_Protocol::Port _port_counter = 0;
 

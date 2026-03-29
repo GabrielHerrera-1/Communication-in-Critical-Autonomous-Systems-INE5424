@@ -9,18 +9,26 @@ Vehicle::Vehicle()
 
 Vehicle::~Vehicle() {
     for (auto c : _components)
-        delete c;
+        delete c.first;
 }
 
 void Vehicle::add_component(Component* component) {
-    _components.push_back(component);
-    Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&_protocol,generate_addres());
+    Vehicle_Protocol::Port port = _port_counter++;
+    _components.push_back(Component_Port_Pair(component,port));
+    /*
+    Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&_protocol,_protocol.create_address(port));
     component->set_comunicator(communicator);
+    component->set_port(port);
+    */
+}
+
+void Vehicle::add_component(Component* component, Vehicle_Protocol::Port port) {
+    _components.push_back(Component_Port_Pair(component,port));
 }
 
 void Vehicle::initialize() {
     for (auto c : _components)
-        c->initialize();
+        c.first->initialize();
 }
 
 void Vehicle::run() {
@@ -30,12 +38,15 @@ void Vehicle::run() {
     for (auto c : _components) {
         pid_t pid = fork();
         if (pid == 0) {
-            c->run();
+            Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&_protocol,_protocol.create_address(c.second));
+            c.first->set_comunicator(communicator);
+            c.first->set_port(c.second);
+            c.first->run();
             _exit(0);
         } else if (pid > 0) {
             pids.push_back(pid);
         } else {
-            std::cerr << "[Vehicle] fork falhou para " << c->id() << std::endl;
+            std::cerr << "[Vehicle] fork falhou para " << c.first->id() << std::endl;
         }
     }
 
@@ -46,8 +57,4 @@ void Vehicle::run() {
     }
 
     std::cout << "[Vehicle] encerrado." << std::endl;
-}
-
-Vehicle_Protocol::Address Vehicle::generate_addres(){
-    return _protocol.create_address(_port_counter++);
 }

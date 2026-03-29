@@ -24,10 +24,11 @@ public:
 
     // CComunicator::Protocol::Port
     void set_comunicator(Communicator<Vehicle_Protocol>* Communicator);
+    void set_port(Vehicle_Protocol::Port port);
 
 protected:
     std::string _id;
-    
+    Vehicle_Protocol::Port _port;
     Communicator<Vehicle_Protocol>* _comnunicator;
     
 };
