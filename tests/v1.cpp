@@ -1,22 +1,22 @@
 #include "../src/application/vehicle_protocol.h"
 #include "../src/communication/communicator.h"
 #include "../src/communication/message.h"
+#include "../src/application/vehicle.h"
+#include "../src/application/components/sensors/lidar_sensor.h"
 #include <iostream>
 #include <unistd.h>
 
 int main(){
-    constexpr Vehicle_Protocol::Port COMPONENT_PORT = 0x0404;
 
-    NIC<RawSocketEngine> nic;
-    Vehicle_Protocol protocol(&nic);
-    Vehicle_Protocol::Address component(nic.address(), COMPONENT_PORT);
-    Communicator<Vehicle_Protocol> communicator(&protocol, component);
+    Lidar_Sensor* l = new Lidar_Sensor("lidar");
 
-    sleep(2);
+    Vehicle v1 = Vehicle();
 
-    const char payload[] = "vm1: componente 0x0404 enviando broadcast";
-    const Message message(payload, sizeof(payload));
+    v1.add_component(l);
 
-    std::cout << "[v1] enviando pela porta 0x0404" << std::endl;
-    return communicator.send(&message) ? 0 : 1;
+    v1.initialize();
+    
+    v1.run();
+
+    
 }

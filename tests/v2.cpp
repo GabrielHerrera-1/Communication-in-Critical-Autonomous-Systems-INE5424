@@ -12,12 +12,12 @@ int main(){
     Communicator<Vehicle_Protocol> communicator(&protocol, component);
 
     Message message;
-    if (!communicator.receive(&message)) {
-        std::cerr << "[v2] falha ao receber mensagem" << std::endl;
-        return 1;
+    while (true){
+        communicator.receive(&message);
+
+        std::cout << "[v2] recebido na porta 0x0404: "
+              << reinterpret_cast<const char*>(message.data()) << std::endl;
     }
 
-    std::cout << "[v2] recebido na porta 0x0404: "
-              << reinterpret_cast<const char*>(message.data()) << std::endl;
     return 0;
 }
