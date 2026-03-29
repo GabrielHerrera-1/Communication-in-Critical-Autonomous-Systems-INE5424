@@ -93,7 +93,9 @@ public:
         std::cout << "[" << _config.label << "][vm" << _vm_id
                   << "] iniciando teste concorrente." << std::endl;
 
-        sleep(_config.startup_delay_sec);
+        if (_config.startup_delay_sec > 0) {
+            sleep(_config.startup_delay_sec);
+        }
 
         std::thread sender(&Mesh_Component::send_all_messages, this);
         receive_all_messages();
@@ -239,7 +241,7 @@ int main() {
         2,
         3,
         20,
-        200000
+        200000,
     };
 
     Vehicle vehicle;

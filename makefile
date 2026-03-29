@@ -11,11 +11,10 @@ RUN_QEMU_TEST = ./tests/run_qemu_test.sh
 
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(SRCS:.cpp=.o)
-TEST_SRCS := $(wildcard $(TEST_DIR)/*.cpp)
-TEST_BINS := $(TEST_SRCS:.cpp=)
 CORE_TEST_BINS := $(TEST_DIR)/basic $(TEST_DIR)/v3
+TEST_BINS := $(CORE_TEST_BINS)
 
-DEPS := $(SRCS:.cpp=.d) $(TEST_SRCS:.cpp=.d)
+DEPS := $(SRCS:.cpp=.d) $(CORE_TEST_BINS:=.d)
 
 .PHONY: all build select-qemu-cpu test test-basic test-mesh-concurrent clean
 
@@ -62,6 +61,7 @@ clean:
 	find $(SRC_DIR) -name "*.o" -delete
 	find $(SRC_DIR) -name "*.d" -delete
 	rm -f $(TEST_BINS)
+	rm -f $(TEST_DIR)/v1 $(TEST_DIR)/v2
 	rm -f $(TEST_DIR)/*.d
 	rm -f $(QEMU_CPU_FILE)
 

@@ -1,26 +1,21 @@
 #include "component.h"
 
-// o c++ não deixa o construtor deixar _adddress e _comunicator não inicializados
-
 Component::Component(const std::string& id)
     : _id(id),
       _port(0),
       _endpoint{}
-{
-    
-}
+{}
 
-Component::~Component() {
-}
+Component::~Component() {}
 
 const std::string& Component::id() const {
     return _id;
 }
 
-void Component::set_endpoint(Communication_Endpoint * endpoint){
+void Component::set_endpoint(Communication_Endpoint * endpoint) {
     _endpoint = endpoint;
 }
 
-void Component::set_port(Port port){
+void Component::set_port(Port port) {
     _port = port;
 }
