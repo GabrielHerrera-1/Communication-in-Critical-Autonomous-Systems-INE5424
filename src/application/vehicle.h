@@ -27,9 +27,6 @@ public:
     void run();
 
 private:
-    // stack de rede (ordem de declaração importa pra inicialização)
-    NIC<RawSocketEngine> _nic;
-    Vehicle_Protocol _protocol;
 
     std::vector<Component_Port_Pair> _components;
 

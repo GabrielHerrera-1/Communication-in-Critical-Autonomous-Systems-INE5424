@@ -27,15 +27,16 @@ void Mock_Component::initialize(){
 } 
 
 void Mock_Component::run(){
-    std::cout << "[" << _id << "]" << " started " << std::endl;
 
-    sleep(10);
+    sleep(3);
 
-    std::thread sender(&Mock_Component::send_all_messages, this);
-    receive_all_messages();
-    sender.join();
+    std::thread receiver(&Mock_Component::receive_all_messages, this);
 
-    std::cout << "[" << _id << "]" << " ended " << std::endl;
+    sleep(3);
+
+    send_all_messages();
+    
+    receiver.join();
 }
 
 void Mock_Component::send_all_messages() {

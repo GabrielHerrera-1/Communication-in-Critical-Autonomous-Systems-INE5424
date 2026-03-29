@@ -2,10 +2,7 @@
 #include <sys/wait.h>
 #include <iostream>
 
-Vehicle::Vehicle()
-    : _nic()
-    , _protocol(&_nic)
-    {}
+Vehicle::Vehicle(){}
 
 Vehicle::~Vehicle() {
     for (auto c : _components)
@@ -38,7 +35,9 @@ void Vehicle::run() {
     for (auto c : _components) {
         pid_t pid = fork();
         if (pid == 0) {
-            Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&_protocol,_protocol.create_address(c.second));
+            NIC<RawSocketEngine> nic;
+            Vehicle_Protocol protocol(&nic);
+            Communicator<Vehicle_Protocol>* communicator = new Communicator<Vehicle_Protocol>(&protocol,protocol.create_address(c.second));
             c.first->set_comunicator(communicator);
             c.first->set_port(c.second);
             c.first->run();
