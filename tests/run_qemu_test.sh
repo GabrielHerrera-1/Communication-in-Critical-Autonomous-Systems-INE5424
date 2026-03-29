@@ -17,6 +17,8 @@ EXPECTED_SEND=${5:-}
 EXPECTED_RECEIVE=${6:-}
 TIMEOUT_SEC=${TIMEOUT_SEC:-180}
 QEMU_CPU=${QEMU_CPU:-max}
+KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-0}
+ARTIFACTS_FILE=${ARTIFACTS_FILE:-}
 
 KERNEL="$REPO_ROOT/kernel/Image"
 BASE_INITRAMFS="$REPO_ROOT/kernel/initramfs.cpio"
@@ -26,6 +28,10 @@ INITRAMFS_PATH="$TMP_ROOT/test.cpio"
 LOG_DIR="$TMP_ROOT/logs"
 MCAST_PORT=$(expr 12000 + $$ % 1000)
 PIDS=""
+
+if [ -n "$ARTIFACTS_FILE" ]; then
+    printf '%s\n' "$TMP_ROOT" > "$ARTIFACTS_FILE"
+fi
 
 cleanup() {
     status=$?
@@ -39,6 +45,10 @@ cleanup() {
         echo "[test:$SCENARIO_NAME] logs preservados em $LOG_DIR" >&2
         echo "[test:$SCENARIO_NAME] initramfs preservado em $INITRAMFS_PATH" >&2
         exit $status
+    fi
+    if [ "$KEEP_ARTIFACTS" = "1" ]; then
+        echo "[test:$SCENARIO_NAME] artefatos preservados em $TMP_ROOT"
+        exit 0
     fi
     rm -rf "$TMP_ROOT"
 }

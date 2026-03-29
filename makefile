@@ -12,11 +12,12 @@ RUN_QEMU_TEST = ./tests/run_qemu_test.sh
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(SRCS:.cpp=.o)
 CORE_TEST_BINS := $(TEST_DIR)/basic $(TEST_DIR)/v3
-TEST_BINS := $(CORE_TEST_BINS)
+BENCHMARK_BINS := $(TEST_DIR)/rtt
+TEST_BINS := $(CORE_TEST_BINS) $(BENCHMARK_BINS)
 
 DEPS := $(SRCS:.cpp=.d) $(CORE_TEST_BINS:=.d)
 
-.PHONY: all build select-qemu-cpu test test-basic test-mesh-concurrent clean
+.PHONY: all build select-qemu-cpu test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 clean
 
 all: test
 
@@ -50,6 +51,18 @@ test-basic: select-qemu-cpu $(TEST_DIR)/basic $(RUN_QEMU_TEST)
 
 test-mesh-concurrent: select-qemu-cpu $(TEST_DIR)/v3 $(RUN_QEMU_TEST)
 	QEMU_CPU=$$(cat $(QEMU_CPU_FILE)) $(RUN_QEMU_TEST) tests/v3 5 mesh-concurrent "concluido com 6 envios e 24 recebimentos validados." 6 24
+
+measure-rtt: select-qemu-cpu $(TEST_DIR)/rtt $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
+	@set -e; \
+	artifacts_file=$$(mktemp /tmp/so2-rtt-artifacts.XXXXXX); \
+	KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file QEMU_CPU=$$(cat $(QEMU_CPU_FILE)) $(RUN_QEMU_TEST) tests/rtt 5 rtt-benchmark "RTT benchmark concluido."; \
+	artifacts_root=$$(cat $$artifacts_file); \
+	python3 $(TEST_DIR)/summarize_rtt.py $$artifacts_root/logs/vm1.log; \
+	echo "[measure-rtt] logs preservados em $$artifacts_root/logs"; \
+	rm -f $$artifacts_file
+
+measure-rtt-10: select-qemu-cpu $(TEST_DIR)/rtt $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py $(TEST_DIR)/measure_rtt_batch.py
+	python3 $(TEST_DIR)/measure_rtt_batch.py $(RUN_QEMU_TEST) $$(cat $(QEMU_CPU_FILE)) 10
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
