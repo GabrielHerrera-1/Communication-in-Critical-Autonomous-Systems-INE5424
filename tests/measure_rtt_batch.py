@@ -15,9 +15,9 @@ from summarize_rtt import describe_samples, extract_samples
 
 
 def main() -> int:
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5):
         print(
-            "uso: measure_rtt_batch.py <run_qemu_test.sh> <qemu_cpu> <repeticoes>",
+            "uso: measure_rtt_batch.py <run_qemu_test.sh> <qemu_cpu> <repeticoes> [binario]",
             file=sys.stderr,
         )
         return 2
@@ -25,6 +25,7 @@ def main() -> int:
     runner = pathlib.Path(sys.argv[1]).resolve()
     qemu_cpu = sys.argv[2]
     repetitions = int(sys.argv[3])
+    binary_rel = sys.argv[4] if len(sys.argv) == 5 else "tests/rtt"
 
     if repetitions <= 0:
         print("repeticoes deve ser > 0", file=sys.stderr)
@@ -51,7 +52,7 @@ def main() -> int:
             subprocess.run(
                 [
                     str(runner),
-                    "tests/rtt",
+                    binary_rel,
                     "5",
                     "rtt-benchmark",
                     "RTT benchmark concluido.",

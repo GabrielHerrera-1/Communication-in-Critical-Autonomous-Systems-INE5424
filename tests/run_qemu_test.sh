@@ -17,17 +17,26 @@ EXPECTED_SEND=${5:-}
 EXPECTED_RECEIVE=${6:-}
 TIMEOUT_SEC=${TIMEOUT_SEC:-180}
 QEMU_CPU=${QEMU_CPU:-max}
-KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-0}
+QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
+LOGS_DIR=${LOGS_DIR:-$REPO_ROOT/logs}
+KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-1}
 ARTIFACTS_FILE=${ARTIFACTS_FILE:-}
 
 KERNEL="$REPO_ROOT/kernel/Image"
 BASE_INITRAMFS="$REPO_ROOT/kernel/initramfs.cpio"
 BINARY_PATH="$REPO_ROOT/$BINARY_REL"
-TMP_ROOT=$(mktemp -d "/tmp/${SCENARIO_NAME}.XXXXXX")
+mkdir -p "$LOGS_DIR" "$LOGS_DIR/$SCENARIO_NAME"
+RUN_STAMP=$(date +%Y%m%d-%H%M%S)
+TMP_ROOT=$(mktemp -d "$LOGS_DIR/$SCENARIO_NAME/${RUN_STAMP}.XXXXXX")
+SCENARIO_LATEST_LINK="$LOGS_DIR/$SCENARIO_NAME/latest"
+GLOBAL_LATEST_LINK="$LOGS_DIR/latest"
 INITRAMFS_PATH="$TMP_ROOT/test.cpio"
 LOG_DIR="$TMP_ROOT/logs"
 MCAST_PORT=$(expr 12000 + $$ % 1000)
 PIDS=""
+
+ln -sfn "$TMP_ROOT" "$SCENARIO_LATEST_LINK"
+ln -sfn "$TMP_ROOT" "$GLOBAL_LATEST_LINK"
 
 if [ -n "$ARTIFACTS_FILE" ]; then
     printf '%s\n' "$TMP_ROOT" > "$ARTIFACTS_FILE"
@@ -50,6 +59,7 @@ cleanup() {
         echo "[test:$SCENARIO_NAME] artefatos preservados em $TMP_ROOT"
         exit 0
     fi
+    rm -f "$SCENARIO_LATEST_LINK" "$GLOBAL_LATEST_LINK"
     rm -rf "$TMP_ROOT"
 }
 
@@ -101,6 +111,7 @@ fi
 mkdir -p "$LOG_DIR"
 
 echo "[test:$SCENARIO_NAME] preparando initramfs temporario"
+echo "[test:$SCENARIO_NAME] logs em $LOG_DIR"
 
 WORKDIR=$(mktemp -d "/tmp/${SCENARIO_NAME}-rootfs.XXXXXX")
 (
@@ -133,7 +144,7 @@ echo "[test:$SCENARIO_NAME] subindo $VM_COUNT VM(s) com cpu=$QEMU_CPU"
 vm_index=1
 while [ "$vm_index" -le "$VM_COUNT" ]; do
     mac_suffix=$(printf "%02x" "$vm_index")
-    qemu-system-riscv64 \
+    "$QEMU_BIN" \
         -machine virt \
         -cpu "$QEMU_CPU" \
         -nographic \

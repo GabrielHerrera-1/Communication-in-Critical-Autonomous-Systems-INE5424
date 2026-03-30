@@ -1,2 +1,7 @@
-*.o
 *.cpio
+*.pyc
+
+.idea/
+build/
+logs/
+tests/__pycache__/
