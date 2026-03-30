@@ -131,13 +131,6 @@ public:
         return static_cast<int>(data_size);
     };
 
-    // comentarios do guto abaixo. porem acredito que ele quisesse escrever NIC::unmarshal, porque o buffer ja foi recebido aqui,
-    // caso façamos NIC::receive vamos receber outro pacote
-
-    // unsigned int s = NIC::receive(buf, &from.paddr, &to.paddr, data, size)
-    // NIC::free(buf)
-    // return s;
-
     Address create_address(Port port){
         return Address(_nic->address(),port);
     }

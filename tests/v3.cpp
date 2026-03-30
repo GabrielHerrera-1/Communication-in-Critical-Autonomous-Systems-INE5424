@@ -23,6 +23,8 @@ struct Concurrent_Scenario_Config {
 static const int VEHICLE_COUNT = 5;
 
 int detect_vm_id() {
+    // cada VM recebe so2.vm_id=N via cmdline do kernel no runner.
+    // lemos /proc/cmdline para descobrir qual identidade logica esta rodando aqui.
     FILE * cmdline = std::fopen("/proc/cmdline", "r");
     if (!cmdline) {
         std::cerr << "[mesh-concurrent] nao foi possivel abrir /proc/cmdline" << std::endl;
@@ -61,6 +63,8 @@ void build_payload(
     int sender_id,
     int sequence
 ) {
+    // payload simples de teste. round + vm + sequencia permitem validar
+    // integridade, completude e duplicatas do cenario.
     std::snprintf(
         buffer,
         size,
@@ -94,9 +98,12 @@ public:
                   << "] iniciando teste concorrente." << std::endl;
 
         if (_config.startup_delay_sec > 0) {
+            // espera todas as VMs subirem antes de iniciar o trafego
             sleep(_config.startup_delay_sec);
         }
 
+        // envio e recepcao acontecem ao mesmo tempo: uma thread envia
+        // enquanto a thread principal fica bloqueando em receive()
         std::thread sender(&Mesh_Component::send_all_messages, this);
         receive_all_messages();
         sender.join();
@@ -125,6 +132,7 @@ private:
                 std::cout << "[" << _config.label << "][vm" << _vm_id
                           << "] enviou: " << payload << std::endl;
 
+                // pequeno espacamento para o trafego nao sair todo de uma vez
                 if (_config.inter_message_delay_usec > 0 &&
                     !(round == _config.rounds &&
                       sequence == _config.messages_per_round)) {
@@ -135,9 +143,13 @@ private:
     }
 
     void receive_all_messages() {
+        // cada VM recebe tudo das outras 4:
+        // (5 - 1) * 2 rounds * 3 msgs = 24 mensagens
         const int expected_total =
             (VEHICLE_COUNT - 1) * _config.rounds * _config.messages_per_round;
 
+        // tabela achatada para marcar quais combinacoes (round, sender, sequence)
+        // ja chegaram. isso nos permite detectar duplicatas e faltas.
         std::vector<unsigned char> seen(
             (_config.rounds + 1) * (VEHICLE_COUNT + 1) * (_config.messages_per_round + 1),
             0
@@ -159,6 +171,8 @@ private:
             int sender_id = 0;
             int sequence = 0;
 
+            // formato esperado:
+            // mesh-concurrent:r<round>:vm<sender_id>:m<sequence>
             if (std::sscanf(
                     payload,
                     "%63[^:]:r%d:vm%d:m%d",
@@ -172,12 +186,15 @@ private:
                 std::exit(1);
             }
 
+            // garante que a mensagem pertence a este cenario de teste
             if (std::strcmp(parsed_label, _config.label) != 0) {
                 std::cerr << "[" << _config.label << "][vm" << _vm_id
                           << "] label inesperado: " << payload << std::endl;
                 std::exit(1);
             }
 
+            // valida os metadados extraidos do payload.
+            // sender_id == _vm_id indica mensagem propria, o que nao deve acontecer aqui.
             if (round < 1 || round > _config.rounds ||
                 sender_id < 1 || sender_id > VEHICLE_COUNT ||
                 sender_id == _vm_id ||
@@ -188,10 +205,12 @@ private:
                 std::exit(1);
             }
 
+            // transforma (round, sender, sequence) em um indice unico no vetor seen
             const int idx =
                 ((round * (VEHICLE_COUNT + 1)) + sender_id) *
                 (_config.messages_per_round + 1) + sequence;
 
+            // se ja marcamos esse indice antes, a mensagem chegou duplicada
             if (seen[idx]) {
                 std::cerr << "[" << _config.label << "][vm" << _vm_id
                           << "] mensagem duplicada: " << payload << std::endl;
@@ -205,6 +224,8 @@ private:
                       << "] recebeu: " << payload << std::endl;
         }
 
+        // checagem final de completude: percorre tudo que deveria ter chegado
+        // e falha se alguma combinacao esperada nao apareceu.
         for (int round = 1; round <= _config.rounds; ++round) {
             for (int sender_id = 1; sender_id <= VEHICLE_COUNT; ++sender_id) {
                 if (sender_id == _vm_id) {

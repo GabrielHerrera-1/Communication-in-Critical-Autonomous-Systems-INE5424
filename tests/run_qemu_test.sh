@@ -83,6 +83,16 @@ log_matches_expectations() {
     return 0
 }
 
+success_highlight() {
+    logfile=$1
+
+    if [ ! -f "$logfile" ]; then
+        return 1
+    fi
+
+    grep -F "$SUCCESS_PATTERN" "$logfile" | tail -n 1
+}
+
 if [ ! -x "$BINARY_PATH" ]; then
     echo "[test:$SCENARIO_NAME] binario ausente ou sem permissao: $BINARY_PATH" >&2
     exit 1
@@ -214,7 +224,12 @@ while [ "$vm_index" -le "$VM_COUNT" ]; do
         exit 1
     fi
 
-    echo "[test:$SCENARIO_NAME] vm${vm_index} ok"
+    highlight=$(success_highlight "$logfile" || true)
+    if [ -n "$highlight" ]; then
+        echo "[test:$SCENARIO_NAME] vm${vm_index} ok: $highlight"
+    else
+        echo "[test:$SCENARIO_NAME] vm${vm_index} ok"
+    fi
     vm_index=$(expr "$vm_index" + 1)
 done
 

@@ -2,7 +2,7 @@ SRC_DIR = src
 TEST_DIR = tests
 QEMU_CPU ?= auto
 QEMU_CPU_FILE = .qemu_cpu
-QEMU_CPU_CANDIDATES = max rv64 sifive-u54
+QEMU_CPU_CANDIDATES = rv64 sifive-u54 max
 
 CXX = riscv64-linux-gnu-g++
 CXXFLAGS = -static -I$(SRC_DIR) -MMD -MP
@@ -18,11 +18,13 @@ TEST_BINS := $(CORE_TEST_BINS) $(BENCHMARK_BINS)
 DEPS := $(SRCS:.cpp=.d) $(CORE_TEST_BINS:=.d)
 
 .PHONY: all build select-qemu-cpu test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 clean
+.SECONDARY: $(TEST_BINS)
 
 all: test
 
 build: $(CORE_TEST_BINS)
-	@echo "Cleaning up dependency files..."
+	@echo "[build] binarios de teste atualizados."
+	@echo "[build] limpando arquivos de dependencia..."
 	@rm -f $(DEPS)
 
 select-qemu-cpu: $(TEST_DIR)/basic $(RUN_QEMU_TEST)
@@ -45,12 +47,17 @@ select-qemu-cpu: $(TEST_DIR)/basic $(RUN_QEMU_TEST)
 	exit 1
 
 test: build select-qemu-cpu test-basic test-mesh-concurrent
+	@echo "[test] suite completa aprovada."
 
 test-basic: select-qemu-cpu $(TEST_DIR)/basic $(RUN_QEMU_TEST)
-	QEMU_CPU=$$(cat $(QEMU_CPU_FILE)) $(RUN_QEMU_TEST) tests/basic 1 basic "basic test"
+	@echo "[test] rodando cenario basic..."
+	@QEMU_CPU=$$(cat $(QEMU_CPU_FILE)) $(RUN_QEMU_TEST) tests/basic 1 basic "basic test"
+	@echo "[test] cenario basic aprovado."
 
 test-mesh-concurrent: select-qemu-cpu $(TEST_DIR)/v3 $(RUN_QEMU_TEST)
-	QEMU_CPU=$$(cat $(QEMU_CPU_FILE)) $(RUN_QEMU_TEST) tests/v3 5 mesh-concurrent "concluido com 6 envios e 24 recebimentos validados." 6 24
+	@echo "[test] rodando cenario mesh-concurrent..."
+	@QEMU_CPU=$$(cat $(QEMU_CPU_FILE)) $(RUN_QEMU_TEST) tests/v3 5 mesh-concurrent "concluido com 6 envios e 24 recebimentos validados." 6 24
+	@echo "[test] cenario mesh-concurrent aprovado."
 
 measure-rtt: select-qemu-cpu $(TEST_DIR)/rtt $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
 	@set -e; \

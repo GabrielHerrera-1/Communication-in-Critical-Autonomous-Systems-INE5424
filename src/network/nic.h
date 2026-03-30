@@ -78,7 +78,6 @@ public:
 
     // recepcao direta sem observer. seguro de usar somente antes do primeiro attach()
     // depois que a thread de recepção inicia, o caminho correto é via observer: recv_loop -> notify -> Protocol::update
-    // TODO: antes de entregar podemos colocar a inicialização do recv loop no construtor de volta
     int receive(Address *src, Protocol_Number *prot, void *data, unsigned int size) {
         Ethernet::Frame frame;
         int bytes = Engine::engine_receive(&frame, sizeof(frame));
