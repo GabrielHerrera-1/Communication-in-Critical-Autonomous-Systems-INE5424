@@ -5,11 +5,9 @@
 #include "../core/observers/conditional_data_observer.h"
 #include "../core/buffer.h"
 #include "../core/traits.h"
-#include <pthread.h>
 #include <mutex>
 #include <cstring>
 #include <cstdio>
-#include <atomic>
 #include <stack>
 
 // Network
@@ -39,7 +37,7 @@ public:
     };
     // construtor
     // botei NIC pra public porque nos testes a aplicação cria a NIC diretamente
-    NIC() : _running(true) { // quando NIC criada inicializa running com true
+    NIC() { // quando NIC criada inicializa running com true
         // inicia raw socket com a interface eth0
         Engine::engine_init(Traits<NIC<Engine>>::INTERFACE);
 
@@ -53,17 +51,11 @@ public:
             // cada elemento da stack contem um numero, esse numero representa o indice do buffer livre no array
             _free_list.push(i); // inicializa a free list com todos buffers livres
         }
-
-        // thread de recepção sera iniciada no primeiro attach(), não aqui
-        // assim receive() pode ser usado de forma segura enquanto ninguem se registrar como observer
     }
 
     // destrutor
     ~NIC() {
-        _running = false;
-        Engine::engine_close(); // fecha socket pra desbloquear recv, senão trava a thread
-        if (_thread_started)
-            pthread_join(_recv_thread, nullptr);
+        Engine::engine_close();
     };
 
     // versao de conveniencia, mesma coisa que o outro send, so muda os parametros
@@ -76,8 +68,8 @@ public:
         return send(buf);
     };
 
-    // recepcao direta sem observer. seguro de usar somente antes do primeiro attach()
-    // depois que a thread de recepção inicia, o caminho correto é via observer: recv_loop -> notify -> Protocol::update
+    // recepcao bloqueante direta do engine. o chamador decide como propagar
+    // a mensagem assim que o recv() retornar.
     int receive(Address *src, Protocol_Number *prot, void *data, unsigned int size) {
         Ethernet::Frame frame;
         int bytes = Engine::engine_receive(&frame, sizeof(frame));
@@ -154,14 +146,8 @@ public:
         return _statistics;
     };
 
-    // inicia a thread de recepção no primeiro attach, antes disso receive() pode ser usado direto
     void attach(Observer *obs, Protocol_Number prot) {
         Observed::attach(obs, prot);
-        // operacao atomica para ler comparar e escrever. evita concorrencia aqui no attach
-        bool expected = false;
-        if (_thread_started.compare_exchange_strong(expected, true)) {
-            pthread_create(&_recv_thread, nullptr, recv_loop_entry, this);
-        }
     };
 
     void detach(Observer *obs, Protocol_Number prot) {
@@ -184,75 +170,8 @@ private:
         return &_buffer[idx];
     }
 
-    // pega o ponteiro pra void e transforma de volta em ponteiro pra NIC, em seguida chama o metodo real
-    static void *recv_loop_entry(void *arg) {
-        reinterpret_cast<NIC *>(arg)->recv_loop();
-        return nullptr;
-    }
-
-    void recv_loop() {
-        while (_running) {
-            // vamos receber diretamente no buffer, pra n precisar colocar o frame na stack antes
-            Buffer<Ethernet::Frame> *buf = alloc_buf();
-
-            int bytes = 0;
-
-            if (buf) {
-                // recebendo diretamente no buffer 
-                bytes = Engine::engine_receive(buf->data(), sizeof(Ethernet::Frame));
-            } else {
-                // alloc falhou, pool cheio
-
-                // frame temporario, so pra n deixar de consumir o pacote
-                Ethernet::Frame temp;
-
-                // so pra drenar o pacote do socket
-                bytes = Engine::engine_receive(&temp, sizeof(Ethernet::Frame));
-                if (bytes <= 0) {
-                    break;
-                }
-
-                // como pool ta cheio, vai pra proxima iteração do loop
-                continue;
-            }
-
-            if (bytes <= 0) {
-                free(buf);
-                break;
-            }
-
-            Ethernet::Frame *frame = buf->data();
-
-            // descarta frames incompletos
-            if (bytes < static_cast<int>(Ethernet::HEADER_SIZE)) {
-                free(buf);
-                continue;
-            }
-
-            // descarta o que a propria nic enviou
-            if (frame->src() == _address) {
-                free(buf);
-                continue;
-            }
-
-            Protocol_Number prot = frame->type();
-
-            _statistics.rx_packets++;
-            _statistics.rx_bytes += bytes;
-
-            buf->size(bytes - Ethernet::HEADER_SIZE);
-
-            if (!Observed::notify(prot, buf)) {
-                free(buf);
-            }
-        }
-    }
-
     // attr privados
     Address _address;
-    std::atomic<bool> _running;
-    std::atomic<bool> _thread_started{false};
-    pthread_t _recv_thread;
     std::mutex _buf_mtx;
     Statistics _statistics;
     Buffer<Ethernet::Frame> _buffer[BUFFER_SIZE];

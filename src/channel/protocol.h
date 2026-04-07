@@ -131,6 +131,44 @@ public:
         return static_cast<int>(data_size);
     };
 
+    static int receive(Address self, Address *from, void *data, unsigned int size) {
+        if (!_instance || !_instance->_nic) return -1;
+
+        Packet packet;
+        typename NIC::Address src_mac;
+        typename NIC::Protocol_Number prot = 0;
+
+        while (true) {
+            int packet_size = _instance->_nic->receive(&src_mac, &prot, &packet, sizeof(packet));
+            if (packet_size <= 0) return packet_size;
+
+            if (prot != PROTO)
+                continue;
+
+            // Em broadcast, cada processo pode enxergar sua propria transmissao.
+            // Ignoramos o que saiu da mesma NIC para preservar a semantica atual.
+            if (src_mac == _instance->_nic->address())
+                continue;
+
+            if (static_cast<unsigned int>(packet_size) < sizeof(Header))
+                continue;
+
+            if (packet.header()->dst_port() != self.port())
+                continue;
+
+            if (from)
+                *from = Address(src_mac, packet.header()->src_port());
+
+            unsigned int data_size = packet_size - sizeof(Header);
+            if (data_size > size)
+                data_size = size;
+            if (data && data_size)
+                memcpy(data, packet.template data<unsigned char>(), data_size);
+
+            return static_cast<int>(data_size);
+        }
+    };
+
     Address create_address(Port port){
         return Address(_nic->address(),port);
     }
@@ -147,7 +185,6 @@ private:
     // removemos o param obs porque não é usado
     void update(typename NIC::Protocol_Number prot, Buffer *buf)
     {
-
         if (!buf) return;
         if (buf->size() < sizeof(Header)) {
             _nic->free(buf);
