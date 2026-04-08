@@ -1,0 +1,469 @@
+#include "shared_memory_engine.h"
+
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+
+#include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+
+namespace {
+
+// estrutura auxiliar pra conversar com a api de semaforos do system v
+// union semun existe pra empacotar argumentos extra pra semctl() (semctl inicializa, le e remove valores do semaforo)
+union semun {
+    int val;
+    semid_ds * buf;
+    unsigned short * array;
+};
+
+} // namespace
+
+SharedMemoryEngine::Configuration SharedMemoryEngine::_configuration = {};
+bool SharedMemoryEngine::_configuration_ready = false;
+
+// metodos pra receber os indices dos semaforos
+int SharedMemoryEngine::sem_component_pending(unsigned int slot) {
+    return SEM_COMPONENT_PENDING_BASE + static_cast<int>(slot);
+}
+
+unsigned int SharedMemoryEngine::semaphore_count(unsigned int component_count) {
+    return SEM_COMPONENT_PENDING_BASE + component_count;
+}
+
+// chamada pelo gateway
+// cria infra no kernel, inicializa regiao compartilhada e devolve os ids que os outros processos vao usar dps
+SharedMemoryEngine::Context SharedMemoryEngine::create(
+    const uint16_t * ports,
+    unsigned int component_count,
+    const unsigned char vm_mac[Ethernet::Address::LENGTH]
+) {
+    // sentinela de erro. se falhar devolve esse Context invalido
+    Context context = {-1, -1};
+
+    // valida entradas
+    if (!ports || !vm_mac || component_count == 0 || component_count > SHM::MAX_COMPONENTS) {
+        return context;
+    }
+
+    // aqui cria o segmento de memoria compartilhada no kernel
+    // IPC_CREAT | 0600 cria com permissão restrita ao dono
+    context.shmid = shmget(IPC_PRIVATE, sizeof(SHM::Region), IPC_CREAT | 0600);
+
+    // falhou
+    if (context.shmid < 0) {
+        std::perror("[SharedMemoryEngine] shmget");
+        return context;
+    }
+
+    // cria o conjunto de semaforos system v. quantidade é mutex do ring +
+    // slots livres + pendencia do gateway + 1 pendencia por componente
+    context.semid = semget(
+        IPC_PRIVATE,
+        static_cast<int>(semaphore_count(component_count)),
+        IPC_CREAT | 0600
+    );
+
+    // se sem falharem, a shm recem criada é removida pra n vazar recurso
+    if (context.semid < 0) {
+        std::perror("[SharedMemoryEngine] semget");
+        shmctl(context.shmid, IPC_RMID, nullptr);
+        context.shmid = -1;
+        return context;
+    }
+
+    // anexa a shm ao espaço de endereçamento 
+    void * raw = shmat(context.shmid, nullptr, 0);
+
+    // se nao conseguiu anexar, remove tudo que foi criado
+    if (raw == reinterpret_cast<void *>(-1)) {
+        std::perror("[SharedMemoryEngine] shmat");
+        semctl(context.semid, 0, IPC_RMID);
+        shmctl(context.shmid, IPC_RMID, nullptr);
+        context = {-1, -1};
+        return context;
+    }
+
+    // converte o ponteiro para o tipo real e zera tudo pra evitar lixo de memoria
+    SHM::Region * region = reinterpret_cast<SHM::Region *>(raw);
+    std::memset(region, 0, sizeof(SHM::Region));
+
+    // marca a regiao como valida
+    region->magic = SHM::MAGIC;
+    region->component_count = static_cast<uint16_t>(component_count);
+    std::memcpy(region->vm_mac, vm_mac, Ethernet::Address::LENGTH);
+
+    // inicializa o cadastro de componentes
+    for (unsigned int i = 0; i < component_count; ++i) {
+        region->components[i].port = ports[i];
+        region->components[i].slot = static_cast<uint16_t>(i);
+        region->components[i].active = 0;
+    }
+
+    // inicializa seq logica do ring. cada escrita recebe um numero crescente
+    region->ring.next_write_seq = 0;
+
+    // array com os valores iniciais dos semaforos
+    unsigned short values[SEM_COMPONENT_PENDING_BASE + SHM::MAX_COMPONENTS] = {};
+
+    // mutex do ring começa liberado
+    values[SEM_RING_MUTEX] = 1;
+    // todos slots livres no começo
+    values[SEM_FREE_SLOTS] = SHM::SLOT_COUNT;
+    // gateway sem mensagens
+    values[SEM_GATEWAY_PENDING] = 0;
+
+    // componentes sem msgs pendentes de inicio
+    for (unsigned int i = 0; i < component_count; ++i) {
+        values[sem_component_pending(i)] = 0;
+    }
+
+    // empacota o array no formato que semctl espera pra setall
+    semun arg;
+    arg.array = values;
+    // inicializa todos os sem com os valores acima. se falhar limpa tudo
+    if (semctl(context.semid, 0, SETALL, arg) < 0) {
+        std::perror("[SharedMemoryEngine] semctl(SETALL)");
+        shmdt(region);
+        semctl(context.semid, 0, IPC_RMID);
+        shmctl(context.shmid, IPC_RMID, nullptr);
+        context = {-1, -1};
+        return context;
+    }
+
+    // desanexa a shm depois de inicializar
+    shmdt(region);
+    return context;
+}
+
+void SharedMemoryEngine::destroy(const Context & context) {
+    if (context.semid >= 0) {
+        semctl(context.semid, 0, IPC_RMID);
+    }
+    if (context.shmid >= 0) {
+        shmctl(context.shmid, IPC_RMID, nullptr);
+    }
+}
+
+void SharedMemoryEngine::configure(const Configuration & configuration) {
+    _configuration = configuration;
+    _configuration_ready = true;
+}
+
+void SharedMemoryEngine::clear_configuration() {
+    _configuration = {};
+    _configuration_ready = false;
+}
+
+SharedMemoryEngine::SharedMemoryEngine()
+: _context{-1, -1},
+  _region(nullptr),
+  _slot(SHM::INVALID_SLOT),
+  _port(0),
+  _gateway(false),
+  _nonblocking(false),
+  _next_seq(0) {}
+
+void SharedMemoryEngine::engine_init(const char *) {
+    if (!_configuration_ready) {
+        std::fprintf(stderr, "[SharedMemoryEngine] configuration ausente\n");
+        return;
+    }
+
+    _context = _configuration.context;
+    _slot = _configuration.slot;
+    _port = _configuration.port;
+    _gateway = _configuration.gateway;
+
+    if (!attach_region()) {
+        return;
+    }
+
+    if (!wait_semaphore(SEM_RING_MUTEX)) {
+        detach_region();
+        return;
+    }
+
+    // leitor passa a enxergar apenas mensagens futuras. nao le slots antigos
+    _next_seq = _region->ring.next_write_seq;
+
+    if (_gateway) {
+        _region->gateway_active = 1;
+    } else if (_slot < _region->component_count) {
+        _region->components[_slot].active = 1;
+    }
+
+    signal_semaphore(SEM_RING_MUTEX);
+}
+
+int SharedMemoryEngine::engine_send(const void * frame, unsigned int size) {
+    if (!_region || !frame || size == 0) {
+        return -1;
+    }
+
+    // no caso de ser o gateway
+    if (_gateway) {
+        return write_slot(
+            frame,
+            size,
+            SHM::GATEWAY_WRITER,
+            SHM::DELIVER_TO_COMPONENTS | SHM::FROM_NETWORK
+        );
+    }
+
+    // não é o gateway
+    return write_slot(
+        frame,
+        size,
+        _slot,
+        SHM::DELIVER_TO_COMPONENTS | SHM::DELIVER_TO_GATEWAY
+    );
+}
+
+int SharedMemoryEngine::engine_receive(void * frame, unsigned int size) {
+    if (!_region || !frame || size == 0) {
+        return -1;
+    }
+    return read_slot(frame, size);
+}
+
+void SharedMemoryEngine::engine_close() {
+    if (_region && wait_semaphore(SEM_RING_MUTEX)) {
+        if (_gateway) {
+            _region->gateway_active = 0;
+        } else if (_slot < _region->component_count) {
+            _region->components[_slot].active = 0;
+        }
+        signal_semaphore(SEM_RING_MUTEX);
+    }
+    detach_region();
+}
+
+void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
+    if (!mac) {
+        return;
+    }
+
+    std::memset(mac, 0, Ethernet::Address::LENGTH);
+    if (_region) {
+        std::memcpy(mac, _region->vm_mac, Ethernet::Address::LENGTH);
+    }
+}
+
+int SharedMemoryEngine::engine_fd() const {
+    return -1;
+}
+
+void SharedMemoryEngine::engine_set_nonblocking(bool enabled) {
+    _nonblocking = enabled;
+}
+
+// tenta anexar a regiao compartilhada ao processo atual
+bool SharedMemoryEngine::attach_region() {
+    void * raw = shmat(_context.shmid, nullptr, 0);
+    // checa falha
+    if (raw == reinterpret_cast<void *>(-1)) {
+        std::perror("[SharedMemoryEngine] shmat");
+        return false;
+    }
+
+    // se deu certo converte pra SHM::Region *
+    _region = reinterpret_cast<SHM::Region *>(raw);
+
+    // ve se deu certo
+    if (_region->magic != SHM::MAGIC) {
+        std::fprintf(stderr, "[SharedMemoryEngine] region invalida\n");
+        shmdt(_region);
+        _region = nullptr;
+        return false;
+    }
+
+    return true;
+}
+
+void SharedMemoryEngine::detach_region() {
+    if (_region) {
+        shmdt(_region);
+        _region = nullptr;
+    }
+}
+
+// retorna o indice do sem de mensagens pendentes usado pela engine
+int SharedMemoryEngine::pending_semaphore() const {
+    return _gateway ? SEM_GATEWAY_PENDING : sem_component_pending(_slot);
+}
+
+bool SharedMemoryEngine::is_component_active(unsigned int slot) const {
+    return _region &&
+           slot < _region->component_count &&
+           _region->components[slot].active;
+}
+
+bool SharedMemoryEngine::is_gateway_active() const {
+    return _region && _region->gateway_active;
+}
+
+unsigned int SharedMemoryEngine::active_reader_count() const {
+    unsigned int count = is_gateway_active() ? 1u : 0u;
+    for (unsigned int i = 0; _region && i < _region->component_count; ++i) {
+        if (is_component_active(i)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+unsigned int SharedMemoryEngine::delivery_count_for_component_write() const {
+    return active_reader_count();
+}
+
+unsigned int SharedMemoryEngine::delivery_count_for_gateway_write() const {
+    return active_reader_count();
+}
+
+// decide se um slot que acabou de ser consumido do ring deve ser entregue para essa instancia ou se deve ser descartado localmente
+bool SharedMemoryEngine::should_deliver_slot(const SHM::Broadcast_Slot & slot) const {
+    if (_gateway) {
+        return slot.flags & SHM::DELIVER_TO_GATEWAY;
+    }
+
+    return (slot.flags & SHM::DELIVER_TO_COMPONENTS) && (slot.writer_slot != _slot);
+}
+
+bool SharedMemoryEngine::wait_semaphore(int sem_index) {
+    struct sembuf op = {};
+    op.sem_num = static_cast<unsigned short>(sem_index);
+    op.sem_op = -1;
+    op.sem_flg = 0;
+
+    while (semop(_context.semid, &op, 1) < 0) {
+        if (errno == EINTR) {
+            continue;
+        }
+        std::perror("[SharedMemoryEngine] semop(wait)");
+        return false;
+    }
+
+    return true;
+}
+
+bool SharedMemoryEngine::try_wait_semaphore(int sem_index) {
+    struct sembuf op = {};
+    op.sem_num = static_cast<unsigned short>(sem_index);
+    op.sem_op = -1;
+    op.sem_flg = IPC_NOWAIT;
+
+    return semop(_context.semid, &op, 1) == 0;
+}
+
+bool SharedMemoryEngine::signal_semaphore(int sem_index) {
+    struct sembuf op = {};
+    op.sem_num = static_cast<unsigned short>(sem_index);
+    op.sem_op = 1;
+    op.sem_flg = 0;
+
+    if (semop(_context.semid, &op, 1) < 0) {
+        std::perror("[SharedMemoryEngine] semop(signal)");
+        return false;
+    }
+
+    return true;
+}
+
+int SharedMemoryEngine::write_slot(
+    const void * frame,
+    unsigned int size,
+    uint16_t writer_slot,
+    uint16_t flags
+) {
+    if (!wait_semaphore(SEM_FREE_SLOTS)) {
+        return -1;
+    }
+
+    if (!wait_semaphore(SEM_RING_MUTEX)) {
+        signal_semaphore(SEM_FREE_SLOTS);
+        return -1;
+    }
+
+    const uint64_t seq = _region->ring.next_write_seq++;
+    SHM::Broadcast_Slot & slot = _region->ring.slots[seq % SHM::SLOT_COUNT];
+
+    slot.seq = seq;
+    slot.writer_slot = writer_slot;
+    slot.flags = flags;
+    slot.frame_size = (size <= SHM::FRAME_SIZE) ? size : SHM::FRAME_SIZE;
+    std::memcpy(slot.frame, frame, slot.frame_size);
+
+    slot.remaining_readers = static_cast<uint16_t>(
+        _gateway ? delivery_count_for_gateway_write()
+                 : delivery_count_for_component_write()
+    );
+
+    if (is_gateway_active() && slot.remaining_readers > 0) {
+        signal_semaphore(SEM_GATEWAY_PENDING);
+    }
+
+    for (unsigned int i = 0; i < _region->component_count; ++i) {
+        if (is_component_active(i)) {
+            signal_semaphore(sem_component_pending(i));
+        }
+    }
+
+    if (slot.remaining_readers == 0) {
+        signal_semaphore(SEM_FREE_SLOTS);
+    }
+
+    signal_semaphore(SEM_RING_MUTEX);
+    return static_cast<int>(slot.frame_size);
+}
+
+int SharedMemoryEngine::read_slot(void * frame, unsigned int size) {
+    const int sem = pending_semaphore();
+
+    while (true) {
+        if (_nonblocking) {
+            if (!try_wait_semaphore(sem)) {
+                return 0;
+            }
+        } else {
+            if (!wait_semaphore(sem)) {
+                return -1;
+            }
+        }
+
+        if (!wait_semaphore(SEM_RING_MUTEX)) {
+            return -1;
+        }
+
+        SHM::Broadcast_Slot & slot = _region->ring.slots[_next_seq % SHM::SLOT_COUNT];
+        if (slot.seq != _next_seq) {
+            signal_semaphore(SEM_RING_MUTEX);
+            return -1;
+        }
+
+        const bool deliver = should_deliver_slot(slot);
+        unsigned int copy_size = slot.frame_size;
+        if (deliver) {
+            if (copy_size > size) {
+                copy_size = size;
+            }
+
+            std::memcpy(frame, slot.frame, copy_size);
+        }
+        ++_next_seq;
+
+        if (slot.remaining_readers > 0) {
+            --slot.remaining_readers;
+            if (slot.remaining_readers == 0) {
+                signal_semaphore(SEM_FREE_SLOTS);
+            }
+        }
+
+        signal_semaphore(SEM_RING_MUTEX);
+
+        if (deliver) {
+            return static_cast<int>(copy_size);
+        }
+    }
+}

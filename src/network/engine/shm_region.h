@@ -55,6 +55,7 @@ namespace SHM {
     struct Region {
         uint32_t magic;
         uint16_t component_count;
+        uint8_t gateway_active;
         unsigned char vm_mac[Ethernet::Address::LENGTH];
 
         Component_Entry components[MAX_COMPONENTS];

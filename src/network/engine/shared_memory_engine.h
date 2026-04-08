@@ -88,14 +88,20 @@ private:
     // consulta o cadastro da shm pra saber se o componente daquele slot ta ativo
     bool is_component_active(unsigned int slot) const;
 
-    // componentes locais ativos
-    unsigned int local_component_count() const;
+    // informa se o gateway participa do consumo do ring
+    bool is_gateway_active() const;
+
+    // quantos leitores ativos consomem cada slot do ring
+    unsigned int active_reader_count() const;
 
     // quantos leitores uma mensagem escrita por um componente deve ter. esse valor vai pra remaining readers
     unsigned int delivery_count_for_component_write() const;
 
     // quantos leitores uma msg escrita pelo gateway deve ter
     unsigned int delivery_count_for_gateway_write() const;
+
+    // decide se o slot consumido deve ser entregue pra esta instancia
+    bool should_deliver_slot(const SHM::Broadcast_Slot & slot) const;
 
 
     // wrappers dos semaforos system V
