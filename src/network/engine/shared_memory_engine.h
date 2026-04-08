@@ -2,6 +2,9 @@
 #define SHARED_MEMORY_ENGINE_H
 
 #include <cstdint>
+#include <functional>
+#include <thread>
+#include <atomic>
 
 #include "shm_region.h"
 #include "../ethernet.h"
@@ -42,7 +45,7 @@ public:
     // talvez util em testes
     static void clear_configuration();
 
-protected:
+public:
     SharedMemoryEngine();
 
     // interface esperada por NIC<Engine>
@@ -51,10 +54,18 @@ protected:
     int engine_receive(void * frame, unsigned int size);
     void engine_close();
     void engine_get_address(unsigned char * mac);
-
-    // stubs de compatibilidade com a nic atual
-    int engine_fd() const;
     void engine_set_nonblocking(bool enabled);
+
+    // inicia recepção: thread bloqueia no semaforo P(), quando V() chega
+    // drena tudo e chama on_receive pra cada frame
+    void start_receiving();
+    // na SHM o self-drop é decidido pelo writer_slot, não pelo MAC
+    bool engine_should_drop_frame(const Ethernet::Frame & frame,
+                                  const Ethernet::Address & local_address) const;
+    // callback chamado pela engine quando um frame chega.
+    // a NIC registra esse callback no construtor dela
+    typedef std::function<void(const unsigned char*, size_t)> ReceiveHandler;
+    void set_receive_handler(ReceiveHandler handler) { _on_receive = handler; }
 
 private:
 
@@ -133,6 +144,10 @@ private:
     bool _gateway;
     bool _nonblocking;
     uint64_t _next_seq;
+
+    ReceiveHandler _on_receive;
+    std::thread _worker;
+    std::atomic<bool> _running_receiver{false};
 };
 
 #endif

@@ -229,6 +229,14 @@ int SharedMemoryEngine::engine_receive(void * frame, unsigned int size) {
 }
 
 void SharedMemoryEngine::engine_close() {
+    // para a thread de recepção
+    _running_receiver = false;
+    // acorda a thread se estiver bloqueada no P() do semaforo pendente
+    if (_context.semid >= 0) {
+        signal_semaphore(pending_semaphore());
+    }
+    if (_worker.joinable()) _worker.join();
+
     if (_region && wait_semaphore(SEM_RING_MUTEX)) {
         if (_gateway) {
             _region->gateway_active = 0;
@@ -238,6 +246,39 @@ void SharedMemoryEngine::engine_close() {
         signal_semaphore(SEM_RING_MUTEX);
     }
     detach_region();
+}
+
+void SharedMemoryEngine::start_receiving() {
+    if (!_region) return;
+    _running_receiver = true;
+
+    _worker = std::thread([this]() {
+        unsigned char frame[SHM::FRAME_SIZE];
+
+        while (_running_receiver) {
+            // bloqueante: espera V() no semaforo pendente (o signal)
+            int bytes = engine_receive(frame, sizeof(frame));
+            if (bytes <= 0) {
+                if (!_running_receiver) break;
+                continue;
+            }
+
+            if (_on_receive) {
+                _on_receive(reinterpret_cast<const unsigned char*>(frame), static_cast<size_t>(bytes));
+            }
+
+            // drena todos os frames pendentes (non-blocking)
+            engine_set_nonblocking(true);
+            while (_running_receiver) {
+                bytes = engine_receive(frame, sizeof(frame));
+                if (bytes <= 0) break;
+                if (_on_receive) {
+                    _on_receive(reinterpret_cast<const unsigned char*>(frame), static_cast<size_t>(bytes));
+                }
+            }
+            engine_set_nonblocking(false);
+        }
+    });
 }
 
 void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
@@ -251,12 +292,13 @@ void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
     }
 }
 
-int SharedMemoryEngine::engine_fd() const {
-    return -1;
-}
-
 void SharedMemoryEngine::engine_set_nonblocking(bool enabled) {
     _nonblocking = enabled;
+}
+
+bool SharedMemoryEngine::engine_should_drop_frame(const Ethernet::Frame &,
+                                                  const Ethernet::Address &) const {
+    return false;
 }
 
 // tenta anexar a regiao compartilhada ao processo atual
