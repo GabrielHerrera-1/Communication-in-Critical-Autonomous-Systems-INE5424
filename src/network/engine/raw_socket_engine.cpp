@@ -9,6 +9,7 @@
 #include <cstring> // memset(), memcpy(), strncpy() — operacoes em blocos de memoria
 #include <arpa/inet.h> // htons() — "Host TO Network Short". converte uint16 de little-endian (x86/risc-v) pra big-endian (padrao da rede)
 #include <cstdio> // perror() — imprime a mensagem de erro da ultima chamada de sistema que falhou
+#include <fcntl.h> // fcntl() e O_NONBLOCK
 
 // abre o socket cru, descobre o indice da interface e faz bind nela
 // recebe o nome da interface (ex: "eth0") que vira de Traits<NIC>::INTERFACE
@@ -122,4 +123,30 @@ void RawSocketEngine::engine_get_address(unsigned char* mac) {
         { perror("[Engine] ioctl"); return; }
     // ifr_hwaddr é um struct sockaddr. o MAC fica dentro de sa_data. copia os 6 bytes pro ponteiro da NIC
     memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
+}
+
+int RawSocketEngine::engine_fd() const {
+    return _sockfd;
+}
+
+void RawSocketEngine::engine_set_nonblocking(bool enabled) {
+    if (_sockfd < 0) {
+        return;
+    }
+
+    int flags = fcntl(_sockfd, F_GETFL, 0);
+    if (flags < 0) {
+        perror("[Engine] fcntl(F_GETFL)");
+        return;
+    }
+
+    if (enabled) {
+        flags |= O_NONBLOCK;
+    } else {
+        flags &= ~O_NONBLOCK;
+    }
+
+    if (fcntl(_sockfd, F_SETFL, flags) < 0) {
+        perror("[Engine] fcntl(F_SETFL)");
+    }
 }

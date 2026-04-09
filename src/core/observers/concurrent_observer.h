@@ -41,6 +41,21 @@ public:
         _data.pop();
         return r;
     }
+
+    bool try_updated(D ** out) {
+        if (!out) {
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(_mtx);
+        if (_data.empty()) {
+            return false;
+        }
+
+        *out = _data.front();
+        _data.pop();
+        return true;
+    }
 private:
     Semaphore _semaphore;
     std::mutex _mtx;

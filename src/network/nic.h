@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cstdio>
 #include <stack>
+#include <cerrno>
 
 // Network
 template <typename Engine>
@@ -37,20 +38,13 @@ public:
     };
     // construtor
     // botei NIC pra public porque nos testes a aplicação cria a NIC diretamente
-    NIC() { // quando NIC criada inicializa running com true
-        // inicia raw socket com a interface eth0
-        Engine::engine_init(Traits<NIC<Engine>>::INTERFACE);
+    NIC() { // quando NIC criada inicializa o engine e o pool de buffers
+        initialize_engine(Traits<NIC<Engine>>::INTERFACE);
+    }
 
-        // pergunta pro kernel qual o MAC da eth0 via chamada de sistema (ioctl)
-        unsigned char mac[6];
-        Engine::engine_get_address(mac);
-        _address = Address(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
-        // marcar todos buffers como livres
-        for (unsigned int i = 0; i < BUFFER_SIZE; i++) {
-            // cada elemento da stack contem um numero, esse numero representa o indice do buffer livre no array
-            _free_list.push(i); // inicializa a free list com todos buffers livres
-        }
+    template <typename Config>
+    explicit NIC(const Config & config) {
+        initialize_engine(config);
     }
 
     // destrutor
@@ -68,8 +62,8 @@ public:
         return send(buf);
     };
 
-    // recepcao bloqueante direta do engine. o chamador decide como propagar
-    // a mensagem assim que o recv() retornar.
+    // recepcao direta bloqueante. usada apenas por quem quiser consumir o frame
+    // sem passar pelo caminho Observer/Observed.
     int receive(Address *src, Protocol_Number *prot, void *data, unsigned int size) {
         Ethernet::Frame frame;
         int bytes = Engine::engine_receive(&frame, sizeof(frame));
@@ -84,6 +78,61 @@ public:
         _statistics.rx_bytes += bytes;
         return payload_size;
     };
+
+    // recebe um frame do engine e o propaga imediatamente aos observers
+    // da NIC, sem thread residente.
+    // retorno:
+    //   1  -> frame notificado a algum observer
+    //   0  -> nenhum frame disponivel / fluxo encerrado
+    //  -1  -> frame consumido, mas descartado
+    int dispatch_once() {
+        Buffer<Ethernet::Frame> *buf = alloc_buf();
+        int bytes = 0;
+
+        if (buf) {
+            bytes = Engine::engine_receive(buf->data(), sizeof(Ethernet::Frame));
+        } else {
+            Ethernet::Frame temp;
+            bytes = Engine::engine_receive(&temp, sizeof(Ethernet::Frame));
+            if (bytes <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                    return 0;
+                return 0;
+            }
+            return -1;
+        }
+
+        if (bytes <= 0) {
+            free(buf);
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                return 0;
+            return 0;
+        }
+
+        Ethernet::Frame *frame = buf->data();
+        if (bytes < static_cast<int>(Ethernet::HEADER_SIZE)) {
+            free(buf);
+            return -1;
+        }
+
+        if (frame->src() == _address) {
+            free(buf);
+            return -1;
+        }
+
+        Protocol_Number prot = frame->type();
+        _statistics.rx_packets++;
+        _statistics.rx_bytes += bytes;
+
+        buf->size(bytes - Ethernet::HEADER_SIZE);
+
+        if (!Observed::notify(prot, buf)) {
+            free(buf);
+            return -1;
+        }
+
+        return 1;
+    }
 
     // procura buffer livre no pool, trava ele e monta header ethernet
     Buffer<Ethernet::Frame> *alloc(Address dst, Protocol_Number prot, unsigned int size) {
@@ -153,7 +202,40 @@ public:
     void detach(Observer *obs, Protocol_Number prot) {
         Observed::detach(obs, prot);
     }; // possibly inherited
+
+    int fd() const {
+        return Engine::engine_fd();
+    }
+
+    void nonblocking(bool enabled) {
+        Engine::engine_set_nonblocking(enabled);
+    }
 private:
+    void initialize_common() {
+        unsigned char mac[6];
+        Engine::engine_get_address(mac);
+        _address = Address(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+        while (!_free_list.empty()) {
+            _free_list.pop();
+        }
+
+        for (unsigned int i = 0; i < BUFFER_SIZE; i++) {
+            _free_list.push(i);
+        }
+    }
+
+    void initialize_engine(const char * interface_name) {
+        Engine::engine_init(interface_name);
+        initialize_common();
+    }
+
+    template <typename Config>
+    void initialize_engine(const Config & config) {
+        Engine::engine_init(config);
+        initialize_common();
+    }
+
     // metodos privados
 
     // procura buffer livre no pool, trava e retorna. nullptr se cheio

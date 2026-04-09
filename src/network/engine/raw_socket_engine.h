@@ -16,6 +16,9 @@ protected:
     void engine_close();
     // pega o MAC da interface via ioctl e copia pro ponteiro. a NIC usa pra saber o proprio endereço
     void engine_get_address(unsigned char* mac);
+    // integra o socket com o event loop do gateway
+    int engine_fd() const;
+    void engine_set_nonblocking(bool enabled);
 
 private:
     // valores padrao de inicializacao pra nao ter lixo de memoria

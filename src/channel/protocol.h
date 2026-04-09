@@ -22,6 +22,7 @@ public:
     // MAC da NIC
     typedef typename NIC::Address Physical_Address;
     typedef uint16_t Port;
+    static const Port BROADCAST_PORT = 0xFFFF;
     // a camada Protocol -> Communicator precisa ser concorrente porque o
     // Communicator bloqueia em receive() e acorda por semaforo.
     typedef Concurrent_Observer<Buffer, Port> Observer;
@@ -39,10 +40,13 @@ public:
         Address(const Null &) : _paddr(), _port(0) {}
         // construtor padrao, combina MAC com porta
         Address(Physical_Address paddr, Port port) : _paddr(paddr), _port(port) {}
-        // broadcast fisico sempre preserva a porta logica do endpoint
-        static Address broadcast(Port port) { return Address(Ethernet::Address::BROADCAST, port); }
+        // broadcast fisico sempre preserva a sessao logica (porta) do endpoint.
+        static Address broadcast(Port port) {
+            return Address(Ethernet::Address::BROADCAST, port);
+        }
 
         Port port() const { return _port; }
+        const Physical_Address & paddr() const { return _paddr; }
 
         // retorna true se pelo menos um dos dois não for zero
         operator bool() const { return (_paddr || _port); }
@@ -108,6 +112,10 @@ public:
     };
 
     static int receive(Buffer *buf, Address *from, void *data, unsigned int size) {
+        return receive(buf, from, nullptr, data, size);
+    };
+
+    static int receive(Buffer *buf, Address *from, Address *to, void *data, unsigned int size) {
         if (!_instance || !_instance->_nic || !buf) return -1;
         if (buf->size() < sizeof(Header)) {
             _instance->_nic->free(buf);
@@ -120,6 +128,8 @@ public:
         Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         if (from)
             *from = Address(src_mac, packet->header()->src_port());
+        if (to)
+            *to = Address(dst_mac, packet->header()->dst_port());
 
         unsigned int data_size = buf->size() - sizeof(Header);
         if (data_size > size)
@@ -131,43 +141,9 @@ public:
         return static_cast<int>(data_size);
     };
 
-    static int receive(Address self, Address *from, void *data, unsigned int size) {
-        if (!_instance || !_instance->_nic) return -1;
-
-        Packet packet;
-        typename NIC::Address src_mac;
-        typename NIC::Protocol_Number prot = 0;
-
-        while (true) {
-            int packet_size = _instance->_nic->receive(&src_mac, &prot, &packet, sizeof(packet));
-            if (packet_size <= 0) return packet_size;
-
-            if (prot != PROTO)
-                continue;
-
-            // Em broadcast, cada processo pode enxergar sua propria transmissao.
-            // Ignoramos o que saiu da mesma NIC para preservar a semantica atual.
-            if (src_mac == _instance->_nic->address())
-                continue;
-
-            if (static_cast<unsigned int>(packet_size) < sizeof(Header))
-                continue;
-
-            if (packet.header()->dst_port() != self.port())
-                continue;
-
-            if (from)
-                *from = Address(src_mac, packet.header()->src_port());
-
-            unsigned int data_size = packet_size - sizeof(Header);
-            if (data_size > size)
-                data_size = size;
-            if (data && data_size)
-                memcpy(data, packet.template data<unsigned char>(), data_size);
-
-            return static_cast<int>(data_size);
-        }
-    };
+    int dispatch_once() {
+        return _nic->dispatch_once();
+    }
 
     Address create_address(Port port){
         return Address(_nic->address(),port);
@@ -185,6 +161,7 @@ private:
     // removemos o param obs porque não é usado
     void update(typename NIC::Protocol_Number prot, Buffer *buf)
     {
+
         if (!buf) return;
         if (buf->size() < sizeof(Header)) {
             _nic->free(buf);
