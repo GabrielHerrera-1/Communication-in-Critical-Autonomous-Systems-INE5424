@@ -8,7 +8,7 @@ template <typename T> class NIC;
 class RawSocketEngine;
 class SharedMemoryEngine;
 // quando for usar Protocol precisa passar um tipo que represente uma NIC aqui dentro
-template <typename NIC_T> class Protocol;
+template <typename SharedMemoryNIC, typename RawSocketNIC> class Protocol; 
 
 // template generico vazio
 template <typename T> struct Traits { };
@@ -26,7 +26,7 @@ template <> struct Traits<NIC<RawSocketEngine>> {
 // o que estou fazendo aqui é: quando eu iniciar uma camada de protocolo e ela estiver
 // conectada a placa de rede NIC baseada em raw socket, eu quero que o ethertype seja 0x8888
 // protocol --> qual ethertype usar (0x8888 é livre)
-template <> struct Traits<Protocol<NIC<RawSocketEngine>>> {
+template <> struct Traits<Protocol<NIC<SharedMemoryEngine>,NIC<RawSocketEngine>>> {
     static const unsigned short ETHERNET_PROTOCOL_NUMBER = 0x8888;
 };
 
@@ -39,7 +39,7 @@ template <> struct Traits<NIC<SharedMemoryEngine>> {
 
 // protocol sobre shared memory usa o mesmo ethertype
 // (o header do Protocol viaja dentro do frame na SHM também)
-template <> struct Traits<Protocol<NIC<SharedMemoryEngine>>> {
+template <> struct Traits<Protocol<NIC<SharedMemoryEngine>, void>> {
     static const unsigned short ETHERNET_PROTOCOL_NUMBER = 0x8888;
 };
 
