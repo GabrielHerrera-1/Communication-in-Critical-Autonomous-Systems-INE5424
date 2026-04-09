@@ -1,5 +1,11 @@
 #include "vehicle.h"
+#include "gateway.h"
+#include "local_protocol.h"
+#include "../network/engine/shared_memory_engine.h"
+#include "../network/nic.h"
+#include "../communication/channel_endpoint.h"
 #include <sys/wait.h>
+#include <signal.h>
 #include <cstdlib>
 #include <iostream>
 
@@ -26,15 +32,50 @@ void Vehicle::initialize() {
 
 void Vehicle::run() {
     std::vector<pid_t> pids;
+    std::vector<Component::Port> component_ports;
     bool failed = false;
+
+    for (auto c : _components) {
+        component_ports.push_back(c.second);
+    }
+
+    SharedMemoryEngine::Context shared_memory =
+        SharedMemoryEngine::create(component_ports);
+    if (shared_memory.shmid < 0 || shared_memory.semid < 0) {
+        std::cerr << "[Vehicle] falha ao criar shared memory do gateway." << std::endl;
+        std::exit(1);
+    }
+
+    pid_t gateway_pid = fork();
+    if (gateway_pid == 0) {
+        SharedMemoryEngine::Config local_config = {
+            shared_memory,
+            SharedMemoryEngine::ROLE_GATEWAY,
+            0
+        };
+        Gateway gateway(local_config, component_ports);
+        _exit(gateway.run());
+    } else if (gateway_pid < 0) {
+        std::cerr << "[Vehicle] fork falhou para o gateway." << std::endl;
+        SharedMemoryEngine::destroy(shared_memory);
+        std::exit(1);
+    }
 
     // fork de cada componente para processo separado
     for (auto c : _components) {
         pid_t pid = fork();
         if (pid == 0) {
-            NIC<RawSocketEngine> nic;
-            Vehicle_Protocol protocol(&nic);
-            Channel_Endpoint<Vehicle_Protocol> endpoint(&protocol, protocol.create_address(c.second));
+            SharedMemoryEngine::Config local_config = {
+                shared_memory,
+                SharedMemoryEngine::ROLE_COMPONENT,
+                c.second
+            };
+            NIC<SharedMemoryEngine> local_nic(local_config);
+            Local_Protocol local_protocol(&local_nic);
+            Channel_Endpoint<Local_Protocol> endpoint(
+                &local_protocol,
+                Local_Protocol::Address(SharedMemoryEngine::component_address(c.second), c.second)
+            );
             c.first->set_endpoint(&endpoint);
             c.first->set_port(c.second);
             c.first->run();
@@ -58,8 +99,15 @@ void Vehicle::run() {
 
     if (failed) {
         std::cerr << "[Vehicle] encerrado com falha." << std::endl;
+        kill(gateway_pid, SIGTERM);
+        waitpid(gateway_pid, nullptr, 0);
+        SharedMemoryEngine::destroy(shared_memory);
         std::exit(1);
     }
+
+    kill(gateway_pid, SIGTERM);
+    waitpid(gateway_pid, nullptr, 0);
+    SharedMemoryEngine::destroy(shared_memory);
 
     std::cout << "[Vehicle] encerrado." << std::endl;
 }
