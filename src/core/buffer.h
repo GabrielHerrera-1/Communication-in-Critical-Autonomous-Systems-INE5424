@@ -4,6 +4,7 @@
 // template porque a api especificada pelo professor usa Buffer<Ethernet::Frame>
 template<typename T> class Buffer {
     public:
+
     // frame real fica aqui dentro. NIC aloca um buffer, preenche o frame e manda pro engine
     T* data() {
         return &_data;
