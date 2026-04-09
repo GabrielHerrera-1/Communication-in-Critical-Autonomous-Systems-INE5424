@@ -142,15 +142,14 @@ public:
         // se tem raw socket manda em raw socket
         if constexpr (!std::is_void_v<RawSocketNIC>){
             if (_instance->_socket_nic && !to.is_internal()) {
-                return typed_nic_send<RawSocketNIC>(_instance->_socket_nic, from, to, data, size);
+                return send_via_nic(_instance->_socket_nic, from, to, data, size);
             }
         }
         // se não usa shm
         else{
-            return typed_nic_send<SharedMemoryEngine>(_instance->_shm_nic, from, to, data, size);
+            return send_via_nic(_instance->_shm_nic, from, to, data, size);
         }
         
-
         
     };
 
@@ -161,7 +160,7 @@ public:
     static int receive(Buffer *buf, Address *from, void *data, unsigned int size) {
         if (!_instance || !buf) return -1;
         if (buf->size() < sizeof(Header)) {
-            _instance->_shm_nic->free(buf);
+            free_buffer(buf);
             return -1;
         }
 
@@ -176,7 +175,7 @@ public:
         if (data && data_size)
             memcpy(data, packet->data(), data_size);
 
-        _instance->_shm_nic->free(buf);
+        free_buffer(buf);
         return static_cast<int>(data_size);
     }
 
@@ -195,18 +194,26 @@ public:
 private:
     void update(typename SharedMemoryNIC::Protocol_Number prot, Buffer *buf)
     {
+
+        // esse update pode ser chamdo tanto pela shm quanto pelo raw socket, dependendo de onde a mensagem chegou
+        // se chegou pela shm, mas o destino é externo, encaminha pela rede sem notificar os observers locais, porque a mensagem não é pra eles
+        // se chegou pelo raw socket, joga na shared memory pra notificar os observers locais, porque a mensagem é pra eles (ou pro gateway, que é um observer local)
+
         if (!buf) return;
         if (buf->size() < sizeof(Header)) {
-            _shm_nic->free(buf);
+            free_buffer(buf);
             return;
         }
 
-        // GATEWAY FORWARDING:
-        // If this instance has a socket and the frame's physical destination is not "itself"
+        
         if constexpr (!std::is_void_v<RawSocketNIC>) {
-            if (_socket_nic && !(Address::same_physical(buf->data()->src(),_address)) && !buf->data()->dst().is_broadcast()) {
-                _socket_nic->send(buf);
-                return; 
+            if (_socket_nic && _shm_nic->owns(buf)) {
+                Physical_Address dst_mac = buf->data()->dst();
+                if (!dst_mac.is_internal() && !Address::same_physical(Address(dst_mac, 0), _address)) {
+                    // Manda pelo raw socket porque o destino é externo
+                    _socket_nic->send(buf);
+                    return; 
+                }
             }
         }
 
@@ -214,20 +221,33 @@ private:
         bool notified = _observed.notify(packet->dst_port(), buf);
 
         if (!notified)
-            _shm_nic->free(buf);
+            free_buffer(buf);
     }
 
     // o frame é o da ethernet independente da nic
 
-    template<typename NICType >
-    void static typed_nic_send(NICType *nic, Address from, Address to, const void *data, unsigned int size){
+    static void free_buffer(Buffer *buf) {
+        if (!_instance) return;
+        if (_instance->_shm_nic && _instance->_shm_nic->owns(buf)) {
+            _instance->_shm_nic->free(buf);
+            return;
+        }
+        if constexpr (!std::is_void_v<RawSocketNIC>) {
+            if (_instance->_socket_nic && _instance->_socket_nic->owns(buf)) {
+                _instance->_socket_nic->free(buf);
+            }
+        }
+    }
+
+    template<typename NICType>
+    static int send_via_nic(NICType *nic, Address from, Address to, const void *data, unsigned int size) {
         Buffer *buf = nic->alloc(to.paddr(), PROTO, sizeof(Header) + size);
         if (!buf) return -1;
 
         Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         packet->src_port(from.port());
         packet->dst_port(to.port());
-        
+
         if (data && size)
             memcpy(packet->data<unsigned char>(), data, size);
 
@@ -255,3 +275,4 @@ template <typename NIC> typename Protocol<NIC>::Observed Protocol<NIC>::_observe
 
 */
 #endif
+

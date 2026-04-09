@@ -36,7 +36,7 @@ public:
 
         unsigned char mac[6];
         Engine::engine_get_address(mac);
-        _address = Address(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        _address = Address(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);        
 
         for (unsigned int i = 0; i < BUFFER_SIZE; i++) {
             _free_list.push(i);
@@ -131,6 +131,10 @@ public:
     const Address &address() { return _address; };
     void address(Address address) { _address = address; };
     const Statistics &statistics() { return _statistics; };
+
+    bool owns(const Buffer<Ethernet::Frame> *buf) const {
+        return (buf >= &_buffer[0] && buf < &_buffer[BUFFER_SIZE]);
+    };
 
     // no primeiro attach, inicia a recepção da engine (SIGIO pra raw socket, semaforo pra SHM)
     void attach(Observer *obs, Protocol_Number prot) {

@@ -14,6 +14,7 @@ public:
     typedef typename Channel::Address Address;
 
 public:
+    // o attach é no mesmo address, talvez deveria ser em um address de interesse
     Communicator(Channel * channel, Address address): Observer(), _channel(channel), _address(address) {
         _channel->attach(this, address);
     }
