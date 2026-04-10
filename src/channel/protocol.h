@@ -45,15 +45,20 @@ public:
         // broadcast fisico sempre preserva a porta logica do endpoint
         static Address broadcast(Port port) { return Address(Ethernet::Address::BROADCAST, port); }
 
-        static bool same_physical(const Address &addr1, const Address &addr2) const {
+        static bool same_physical(const Address &addr1, const Address &addr2) {
             return (addr1._paddr == addr2._paddr);
         }
 
-        static const Physical_Address INTERNAL(0x00,0x00,0x00,0x00,0x00,0x00);
-
-        bool is_internal(){
-            return _paddr == INTERNAL;
+        static const Physical_Address& INTERNAL() {
+            static const Physical_Address addr(0x00,0x00,0x00,0x00,0x00,0x00);
+            return addr;
         }
+
+        bool is_internal() const {
+            return _paddr == INTERNAL();
+        }
+
+        const Physical_Address& paddr() const { return _paddr; }
 
         Port port() const { return _port; }
 
@@ -81,7 +86,7 @@ public:
         Port _dst_port; // quem recebeu (vai ser broadcast por enquanto)
     };
 
-    static const unsigned int MTU = NIC::MTU - sizeof(Header);
+    static const unsigned int MTU = SharedMemoryNIC::MTU - sizeof(Header);
     typedef unsigned char Data[MTU];
     class Packet : public Header
     {
@@ -110,7 +115,7 @@ protected:
         _instance = this;
     }
 
-    Protocol(SharedMemoryNIC* shm_nic, RawSocketNIC socket_nic, uint8_t* mac_addr )
+    Protocol(SharedMemoryNIC* shm_nic, RawSocketNIC* socket_nic, uint8_t* mac_addr )
         : SharedMemoryNIC::Observer(),
          _shm_nic(shm_nic),
          _socket_nic(socket_nic),
@@ -118,15 +123,15 @@ protected:
     {
         _shm_nic->attach(this,PROTO);
         _socket_nic->attach(this,PROTO);
-        _instance = this
+        _instance = this;
     }
 
 public:
     ~Protocol() {
 
-        _shm_nic->detach(this, PROTO); 
+        _shm_nic->detach(this, PROTO);
         if constexpr (!std::is_void_v<RawSocketNIC>){
-            _socket_nic->detach(this, PROTO)
+            _socket_nic->detach(this, PROTO);
         }
         
     }
@@ -135,9 +140,9 @@ public:
     static int send(Address from, Address to, const void *data, unsigned int size) {
 
         if (!_instance) return -1;
-        
+
         // decidimos que só os componentes de fato podem mandar mensagens, então isso aqui seria desnecessário
-        // mas como ja estava feito deixe pra garantir, não adiciona custo em runtime devido a constexpr 
+        // mas como ja estava feito deixe pra garantir, não adiciona custo em runtime devido a constexpr
         // a decisão de roteamento é feita no update do gateway
         if constexpr (!std::is_void_v<RawSocketNIC>){
             if (_instance->_socket_nic && !to.is_internal()) {
@@ -145,11 +150,8 @@ public:
             }
         }
         // se não usa shm
-        else{
-            return send_via_nic(_instance->_shm_nic, from, to, data, size);
-        }
-        
-        
+        return send_via_nic(_instance->_shm_nic, from, to, data, size);
+
     };
 
     // ja é genérico o suficiente, vai servir caso algum dia o gatewaw queira ler mensagens 
@@ -178,7 +180,7 @@ public:
     }
 
     Address create_address(Port port){
-        return Address(_nic->address(),port);
+        return Address(_address._paddr, port);
     }
 
     static void attach(Observer *obs, Address address) {
@@ -259,7 +261,7 @@ private:
 
 private:
     SharedMemoryNIC *_shm_nic;
-    RawSocketNIC _socket_nic;
+    RawSocketNIC *_socket_nic;
     Address _address;
     // Channel protocols are usually singletons
     static Observed _observed;
@@ -267,14 +269,10 @@ private:
 };
 
 // inicializacao dos static
-/*
+template <typename S, typename R>
+Protocol<S,R>* Protocol<S,R>::_instance = nullptr;
 
-// nem lembro oque é isso aqui em baixo, tem que dar uma olhada dps
-
-template <typename NIC> Protocol<NIC>* Protocol<NIC>::_instance = nullptr;
-
-template <typename NIC> typename Protocol<NIC>::Observed Protocol<NIC>::_observed;
-
-*/
+template <typename S, typename R>
+typename Protocol<S,R>::Observed Protocol<S,R>::_observed;
 #endif
 
