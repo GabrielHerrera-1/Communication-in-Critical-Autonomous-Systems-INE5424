@@ -1,18 +1,29 @@
 #ifndef MESSAGE_H
 #define MESSAGE_H
-
+	
 #include <cstring>
+#include <cstdint>
+
+#include "../network/ethernet.h"
 
 class Message {
 public:
+    struct Origin {
+        Ethernet::Address address;
+        uint16_t port;
+
+        Origin() : address(), port(0) {}
+        Origin(const Ethernet::Address & address, uint16_t port)
+            : address(address), port(port) {}
+    };
 
     static const unsigned int MAX_SIZE = 1400;
 
-    Message() : _size(MAX_SIZE) {
+    Message() : _origin(), _size(MAX_SIZE) {
         memset(_payload, 0, sizeof(_payload));
     }
 
-    Message(const void* data, unsigned int size) : _size(0) {
+    Message(const void* data, unsigned int size) : _origin(), _size(0) {
         memset(_payload, 0, sizeof(_payload));
         if (data && size > 0) {
             _size = (size <= MAX_SIZE) ? size : MAX_SIZE;
@@ -38,7 +49,16 @@ public:
         _size = (s <= MAX_SIZE) ? s : MAX_SIZE;
     }
 
+    const Origin & origin() const {
+        return _origin;
+    }
+
+    void origin(const Origin & o) {
+        _origin = o;
+    }
+
 private:
+    Origin _origin;
     unsigned char _payload[MAX_SIZE];
     unsigned int _size;
 };
