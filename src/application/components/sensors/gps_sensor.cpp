@@ -20,3 +20,7 @@ void GPS_Sensor::run() {
         std::this_thread::sleep_for(std::chrono::milliseconds(_interval_ms));
     }
 }
+
+Component::Port GPS_Sensor::logical_port() const {
+    return Component_Ports::GPS_SENSOR;
+}

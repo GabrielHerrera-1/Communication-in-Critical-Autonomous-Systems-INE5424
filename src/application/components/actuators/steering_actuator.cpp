@@ -17,6 +17,10 @@ void Steering_Actuator::run() {
     }
 }
 
+Component::Port Steering_Actuator::logical_port() const {
+    return Component_Ports::STEERING_ACTUATOR;
+}
+
 void Steering_Actuator::apply(double value) {
     if (value < -45.0) value = -45.0;
     if (value > 45.0) value = 45.0;

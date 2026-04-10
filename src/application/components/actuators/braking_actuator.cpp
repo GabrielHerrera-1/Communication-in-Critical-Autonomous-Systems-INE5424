@@ -17,6 +17,10 @@ void Braking_Actuator::run() {
     }
 }
 
+Component::Port Braking_Actuator::logical_port() const {
+    return Component_Ports::BRAKING_ACTUATOR;
+}
+
 void Braking_Actuator::apply(double value) {
     if (value < 0.0) value = 0.0;
     if (value > 150.0) value = 150.0;

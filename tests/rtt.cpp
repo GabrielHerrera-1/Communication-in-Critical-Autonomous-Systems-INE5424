@@ -159,9 +159,9 @@ public:
     void initialize() override {}
 
     void run() override {
-        if (!_endpoint) {
+        if (!_communicator) {
             std::cerr << "[" << _config.label << "][vm" << _vm_id
-                      << "] endpoint ausente" << std::endl;
+                      << "] communicator ausente" << std::endl;
             std::exit(1);
         }
 
@@ -192,7 +192,7 @@ private:
         build_payload(payload, sizeof(payload), _config, kind, _vm_id, sequence);
 
         Message message(payload, std::strlen(payload) + 1);
-        if (!_endpoint->send(&message)) {
+        if (!_communicator->send(&message)) {
             std::cerr << "[" << _config.label << "][vm" << _vm_id
                       << "] falha ao enviar " << payload << std::endl;
             std::exit(1);
@@ -207,7 +207,7 @@ private:
 
     Parsed_Message receive_message() {
         Message message;
-        if (!_endpoint->receive(&message)) {
+        if (!_communicator->receive(&message)) {
             std::cerr << "[" << _config.label << "][vm" << _vm_id
                       << "] falha ao receber mensagem RTT" << std::endl;
             std::exit(1);

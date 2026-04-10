@@ -36,16 +36,17 @@ unsigned int SharedMemoryEngine::semaphore_count(unsigned int component_count) {
 // cria infra no kernel, inicializa regiao compartilhada e devolve os ids que os outros processos vao usar dps
 SharedMemoryEngine::Context SharedMemoryEngine::create(
     const uint16_t * ports,
-    unsigned int component_count,
-    const unsigned char vm_mac[Ethernet::Address::LENGTH]
+    unsigned int component_count
 ) {
     // sentinela de erro. se falhar devolve esse Context invalido
     Context context = {-1, -1};
 
     // valida entradas
-    if (!ports || !vm_mac || component_count == 0 || component_count > SHM::MAX_COMPONENTS) {
+    if (!ports || component_count == 0 || component_count >= SHM::MAX_COMPONENTS) {
         return context;
     }
+
+    const unsigned int registered_slots = component_count + 1; // slot 0 fica reservado ao gateway
 
     // aqui cria o segmento de memoria compartilhada no kernel
     // IPC_CREAT | 0600 cria com permissão restrita ao dono
@@ -61,7 +62,7 @@ SharedMemoryEngine::Context SharedMemoryEngine::create(
     // slots livres + pendencia do gateway + 1 pendencia por componente
     context.semid = semget(
         IPC_PRIVATE,
-        static_cast<int>(semaphore_count(component_count)),
+        static_cast<int>(semaphore_count(registered_slots)),
         IPC_CREAT | 0600
     );
 
@@ -91,12 +92,15 @@ SharedMemoryEngine::Context SharedMemoryEngine::create(
 
     // marca a regiao como valida
     region->magic = SHM::MAGIC;
-    region->component_count = static_cast<uint16_t>(component_count);
-    std::memcpy(region->vm_mac, vm_mac, Ethernet::Address::LENGTH);
+    region->component_count = static_cast<uint16_t>(registered_slots);
 
-    // inicializa o cadastro de componentes
-    for (unsigned int i = 0; i < component_count; ++i) {
-        region->components[i].port = ports[i];
+    // slot 0 e reservado ao gateway; componentes ficam em 1..N
+    region->components[SHM::GATEWAY_SLOT].port = 0;
+    region->components[SHM::GATEWAY_SLOT].slot = SHM::GATEWAY_SLOT;
+    region->components[SHM::GATEWAY_SLOT].active = 0;
+
+    for (unsigned int i = 1; i < registered_slots; ++i) {
+        region->components[i].port = ports[i - 1];
         region->components[i].slot = static_cast<uint16_t>(i);
         region->components[i].active = 0;
     }
@@ -115,7 +119,7 @@ SharedMemoryEngine::Context SharedMemoryEngine::create(
     values[SEM_GATEWAY_PENDING] = 0;
 
     // componentes sem msgs pendentes de inicio
-    for (unsigned int i = 0; i < component_count; ++i) {
+    for (unsigned int i = 0; i < registered_slots; ++i) {
         values[sem_component_pending(i)] = 0;
     }
 
@@ -156,6 +160,10 @@ void SharedMemoryEngine::clear_configuration() {
     _configuration_ready = false;
 }
 
+bool SharedMemoryEngine::is_gateway_process() {
+    return _configuration_ready && (_configuration.slot == SHM::GATEWAY_SLOT);
+}
+
 SharedMemoryEngine::SharedMemoryEngine()
 : _context{-1, -1},
   _region(nullptr),
@@ -174,7 +182,7 @@ void SharedMemoryEngine::engine_init(const char *) {
     _context = _configuration.context;
     _slot = _configuration.slot;
     _port = _configuration.port;
-    _gateway = _configuration.gateway;
+    _gateway = (_slot == SHM::GATEWAY_SLOT);
 
     if (!attach_region()) {
         return;
@@ -286,10 +294,8 @@ void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
         return;
     }
 
+    // na SHM o endereco fisico e interno ao veiculo.
     std::memset(mac, 0, Ethernet::Address::LENGTH);
-    if (_region) {
-        std::memcpy(mac, _region->vm_mac, Ethernet::Address::LENGTH);
-    }
 }
 
 void SharedMemoryEngine::engine_set_nonblocking(bool enabled) {

@@ -88,9 +88,9 @@ public:
     void initialize() override {}
 
     void run() override {
-        if (!_endpoint) {
+        if (!_communicator) {
             std::cerr << "[" << _config.label << "][vm" << _vm_id
-                      << "] endpoint ausente" << std::endl;
+                      << "] communicator ausente" << std::endl;
             std::exit(1);
         }
 
@@ -114,6 +114,10 @@ public:
                   << " recebimentos validados." << std::endl;
     }
 
+    Port logical_port() const override {
+        return 0x0000;
+    }
+
 private:
     void send_all_messages() {
         for (int round = 1; round <= _config.rounds; ++round) {
@@ -122,7 +126,7 @@ private:
                 build_payload(payload, sizeof(payload), _config, round, _vm_id, sequence);
 
                 Message message(payload, std::strlen(payload) + 1);
-                if (!_endpoint->send(&message)) {
+                if (!_communicator->send(&message)) {
                     std::cerr << "[" << _config.label << "][vm" << _vm_id
                               << "] falha ao enviar " << payload << std::endl;
                     std::exit(1);
@@ -157,7 +161,7 @@ private:
 
         while (_receive_count < expected_total) {
             Message message;
-            if (!_endpoint->receive(&message)) {
+            if (!_communicator->receive(&message)) {
                 std::cerr << "[" << _config.label << "][vm" << _vm_id
                           << "] falha ao receber mensagem concorrente" << std::endl;
                 std::exit(1);

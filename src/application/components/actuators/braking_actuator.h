@@ -11,6 +11,7 @@ public:
 
     void initialize() override;
     void run() override;
+    Port logical_port() const override;
     void apply(double value) override;
 
 private:

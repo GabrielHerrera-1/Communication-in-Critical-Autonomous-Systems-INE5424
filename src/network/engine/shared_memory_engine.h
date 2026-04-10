@@ -23,17 +23,15 @@ public:
     // dados que cada processo precisa saber 
     struct Configuration {
         Context context; // aponta pros ipcs ja criados (shmid e semid)
-        uint16_t slot;   // indice fixo do processo no cadastro de componentes da shm
+        uint16_t slot;   // indice fixo do processo na shm; slot 0 eh reservado ao gateway
         uint16_t port;   // identifica o endpoint logico por tipo de dado
-        bool gateway;    // true so no processo gateway
     };
 
 public:
     // gateway cria/destroi os IPCs. por isso precisa desse metodo
     // faz o trabalho de subir a infra da shm
     static Context create(const uint16_t * ports,
-                          unsigned int component_count,
-                          const unsigned char vm_mac[Ethernet::Address::LENGTH]);
+                          unsigned int component_count);
 
     // quando o veiculo é destruido a infra shm se vai tb
     static void destroy(const Context & context);
@@ -44,6 +42,9 @@ public:
 
     // talvez util em testes
     static void clear_configuration();
+
+    // o papel do processo eh definido no bootstrap via slot reservado
+    static bool is_gateway_process();
 
 public:
     SharedMemoryEngine();

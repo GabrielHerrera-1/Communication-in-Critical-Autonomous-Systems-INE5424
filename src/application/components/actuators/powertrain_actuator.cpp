@@ -17,6 +17,10 @@ void Powertrain_Actuator::run() {
     }
 }
 
+Component::Port Powertrain_Actuator::logical_port() const {
+    return Component_Ports::POWERTRAIN_ACTUATOR;
+}
+
 void Powertrain_Actuator::apply(double value) {
     if (value < 0.0) value = 0.0;
     _power_kw = value;

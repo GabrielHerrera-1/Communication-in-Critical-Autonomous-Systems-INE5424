@@ -2,6 +2,7 @@
 #define COMUNICATOR_H
 
 #include "message.h"
+#include "../application/component_ports.h"
 #include "../core/observers/concurrent_observer.h"
 
 template <typename Channel>
@@ -16,12 +17,17 @@ public:
 public:
     Communicator(Channel * channel, Address address): Observer(), _channel(channel), _address(address) {
         _channel->attach(this, address);
+        _broadcast_address = Address(address.paddr(), Component_Ports::BROADCAST);
+        _channel->attach(this, _broadcast_address);
     }
 
-    ~Communicator() { _channel->detach(this, _address); }
+    ~Communicator() {
+        _channel->detach(this, _address);
+        _channel->detach(this, _broadcast_address);
+    }
 
     bool send(const Message * message) {
-        return (_channel->send(_address, Channel::Address::broadcast(_address.port()),
+        return (_channel->send(_address, Channel::Address::physical_broadcast(Component_Ports::BROADCAST),
                                message->data(), message->size()) > 0);
     }
 
@@ -36,7 +42,7 @@ public:
         typename Channel::Address from;
         int size = _channel->receive(buf, &from, message->data(), message->size());
         message->size(size);
-        message->origin(typename Message::Origin(from.physical_address(), from.port()));
+        message->origin(typename Message::Origin(from.paddr(), from.port()));
 
         if (size <= 0)
             return false;
@@ -52,6 +58,7 @@ private:
 private:
     Channel * _channel;
     Address _address;
+    Address _broadcast_address;
 };
 
 #endif

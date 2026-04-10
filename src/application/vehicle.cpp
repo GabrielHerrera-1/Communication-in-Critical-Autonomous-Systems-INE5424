@@ -11,7 +11,7 @@ Vehicle::~Vehicle() {
 }
 
 void Vehicle::add_component(Component* component) {
-    Component::Port port = _port_counter++;
+    Component::Port port = component->logical_port();
     _components.push_back(Component_Port_Pair(component,port));
 }
 
@@ -20,6 +20,7 @@ void Vehicle::add_component(Component* component, Component::Port port) {
 }
 
 void Vehicle::initialize() {
+    _gateway.initialize();
     for (auto c : _components)
         c.first->initialize();
 }
@@ -27,15 +28,37 @@ void Vehicle::initialize() {
 void Vehicle::run() {
     std::vector<pid_t> pids;
     bool failed = false;
+    std::vector<uint16_t> ports;
+    ports.reserve(_components.size());
+
+    for (const auto & c : _components) {
+        ports.push_back(c.second);
+    }
+
+    SharedMemoryEngine::Context context =
+        _gateway.create_context(ports.data(), static_cast<unsigned int>(ports.size()));
+
+    if (context.shmid < 0 || context.semid < 0) {
+        std::cerr << "[Vehicle] nao foi possivel criar a infraestrutura de SHM." << std::endl;
+        std::exit(1);
+    }
+
+    _gateway.set_context(context);
 
     // fork de cada componente para processo separado
-    for (auto c : _components) {
+    for (unsigned int i = 0; i < _components.size(); ++i) {
+        auto c = _components[i];
         pid_t pid = fork();
         if (pid == 0) {
-            NIC<RawSocketEngine> nic;
-            Vehicle_Protocol protocol(&nic);
-            Channel_Endpoint<Vehicle_Protocol> endpoint(&protocol, protocol.create_address(c.second));
-            c.first->set_endpoint(&endpoint);
+            SharedMemoryEngine::Configuration config = {};
+            config.context = context;
+            config.slot = static_cast<uint16_t>(i + 1);
+            config.port = c.second;
+            SharedMemoryEngine::configure(config);
+
+            Vehicle_Protocol protocol;
+            Communicator<Vehicle_Protocol> communicator(&protocol, protocol.create_address(c.second));
+            c.first->set_communicator(&communicator);
             c.first->set_port(c.second);
             c.first->run();
             _exit(0);
@@ -45,6 +68,8 @@ void Vehicle::run() {
             std::cerr << "[Vehicle] fork falhou para " << c.first->id() << std::endl;
         }
     }
+
+    _gateway.run();
 
     // esperar todos os componentes filhos terminarem
     for (pid_t pid : pids) {
@@ -58,8 +83,12 @@ void Vehicle::run() {
 
     if (failed) {
         std::cerr << "[Vehicle] encerrado com falha." << std::endl;
+        _gateway.stop();
+        SharedMemoryEngine::destroy(context);
         std::exit(1);
     }
 
+    _gateway.stop();
+    SharedMemoryEngine::destroy(context);
     std::cout << "[Vehicle] encerrado." << std::endl;
 }

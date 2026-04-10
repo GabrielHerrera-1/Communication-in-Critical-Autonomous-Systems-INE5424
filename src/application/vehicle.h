@@ -5,7 +5,7 @@
 #include "../network/ethernet.h"
 #include "../network/engine/raw_socket_engine.h"
 #include "../channel/protocol.h"
-#include "../communication/channel_endpoint.h"
+#include "gateway.h"
 #include "vehicle_protocol.h"
 #include "components/component.h"
 #include <vector>
@@ -30,9 +30,7 @@ public:
 private:
 
     std::vector<Component_Port_Pair> _components;
-
-    Component::Port _port_counter = 0;
-
+    Gateway _gateway;
 };
 
 #endif

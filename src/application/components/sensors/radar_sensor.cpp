@@ -20,3 +20,7 @@ void Radar_Sensor::run() {
         std::this_thread::sleep_for(std::chrono::milliseconds(_interval_ms));
     }
 }
+
+Component::Port Radar_Sensor::logical_port() const {
+    return Component_Ports::RADAR_SENSOR;
+}

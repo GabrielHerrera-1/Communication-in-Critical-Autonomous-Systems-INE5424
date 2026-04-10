@@ -43,7 +43,7 @@ public:
         // construtor padrao, combina MAC com porta
         Address(Physical_Address paddr, Port port) : _paddr(paddr), _port(port) {}
         // broadcast fisico sempre preserva a porta logica do endpoint
-        static Address broadcast(Port port) { return Address(Ethernet::Address::BROADCAST, port); }
+        static Address physical_broadcast(Port port) { return Address(Ethernet::Address::BROADCAST, port); }
 
         static bool same_physical(const Address &addr1, const Address &addr2) {
             return (addr1._paddr == addr2._paddr);
@@ -103,38 +103,33 @@ public:
         Data _data;
     } __attribute__((packed));
 
-protected:
-    
-    Protocol(SharedMemoryNIC* shm_nic, uint8_t* mac_addr)
-        : SharedMemoryNIC::Observer(),
-         _shm_nic(shm_nic),
-         _socket_nic(nullptr),
-         _address(Physical_Address(mac_addr),0)
-    {
-        _shm_nic->attach(this, PROTO);
-        _instance = this;
-    }
-
-    Protocol(SharedMemoryNIC* shm_nic, RawSocketNIC* socket_nic, uint8_t* mac_addr )
-        : SharedMemoryNIC::Observer(),
-         _shm_nic(shm_nic),
-         _socket_nic(socket_nic),
-         _address(Physical_Address(mac_addr),0)
-    {
-        _shm_nic->attach(this,PROTO);
-        _socket_nic->attach(this,PROTO);
-        _instance = this;
-    }
-
 public:
-    ~Protocol() {
+    Protocol()
+        : SharedMemoryNIC::Observer(),
+        _shm_nic(),
+        _socket_nic(nullptr),
+        _address(_shm_nic.address(), 0)
+    {
+        _shm_nic.attach(this, PROTO);
 
-        _shm_nic->detach(this, PROTO);
-        if constexpr (!std::is_void_v<RawSocketNIC>){
-            _socket_nic->detach(this, PROTO);
+        if constexpr (!std::is_void_v<RawSocketNIC>) {
+            if (SharedMemoryNIC::is_gateway_process()) {
+                _socket_nic = new RawSocketNIC();
+                _socket_nic->attach(this, PROTO);
+            }
         }
-        
+
+        _instance = this;
     }
+
+        ~Protocol() {
+        _shm_nic.detach(this, PROTO);
+        if (_socket_nic) {
+            _socket_nic->detach(this, PROTO);
+            delete _socket_nic;
+        }
+    }
+
     
     
     static int send(Address from, Address to, const void *data, unsigned int size) {
@@ -150,7 +145,7 @@ public:
             }
         }
         // se não usa shm
-        return send_via_nic(_instance->_shm_nic, from, to, data, size);
+        return send_via_nic(&_instance->_shm_nic, from, to, data, size);
 
     };
 
@@ -171,7 +166,7 @@ public:
         if (data_size > size) data_size = size;
         
         if (data && data_size)
-            memcpy(data, packet->data(), data_size);
+            memcpy(data, packet->template data<unsigned char>(), data_size);
 
 
         // decide se é free no shm ou no raw socket
@@ -204,7 +199,7 @@ private:
         Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         
         if constexpr (!std::is_void_v<RawSocketNIC>) {
-            if (_socket_nic && _shm_nic->owns(buf)) {
+            if (_socket_nic && _shm_nic.owns(buf)) {
                 Physical_Address dst_mac = buf->data()->dst();
                 Physical_Address src_mac = buf->data()->src();
                 if (src_mac == _address._paddr && dst_mac == Ethernet::Address::BROADCAST) {
@@ -221,6 +216,17 @@ private:
                     }
                 }
             }
+
+            if (_socket_nic && _socket_nic->owns(buf)) {
+                Buffer *fwd_buf = _shm_nic.alloc(buf->data()->dst(), PROTO, buf->size());
+                if (fwd_buf) {
+                    std::memcpy(fwd_buf->data(), buf->data(), Ethernet::HEADER_SIZE + buf->size());
+                    _shm_nic.send(fwd_buf);
+                }
+
+                free_buffer(buf);
+                return;
+            }
         }
         bool notified = _observed.notify(packet->dst_port(), buf);
 
@@ -232,8 +238,8 @@ private:
 
     static void free_buffer(Buffer *buf) {
         if (!_instance) return;
-        if (_instance->_shm_nic && _instance->_shm_nic->owns(buf)) {
-            _instance->_shm_nic->free(buf);
+        if (_instance->_shm_nic.owns(buf)) {
+            _instance->_shm_nic.free(buf);
             return;
         }
         if constexpr (!std::is_void_v<RawSocketNIC>) {
@@ -253,14 +259,14 @@ private:
         packet->dst_port(to.port());
 
         if (data && size)
-            memcpy(packet->data<unsigned char>(), data, size);
+            memcpy(packet->template data<unsigned char>(), data, size);
 
         return nic->send(buf);
     }
 
 
 private:
-    SharedMemoryNIC *_shm_nic;
+    SharedMemoryNIC _shm_nic;
     RawSocketNIC *_socket_nic;
     Address _address;
     // Channel protocols are usually singletons
@@ -275,4 +281,3 @@ Protocol<S,R>* Protocol<S,R>::_instance = nullptr;
 template <typename S, typename R>
 typename Protocol<S,R>::Observed Protocol<S,R>::_observed;
 #endif
-

@@ -13,6 +13,7 @@
 namespace SHM {
     static const uint32_t MAGIC = 0x534F3232u; //SO22. serve pra identificar se a memoria compartilhada foi iniciada corretamente
     static const uint16_t INVALID_SLOT = 0xFFFFu; // representa slot invalido
+    static const uint16_t GATEWAY_SLOT = 0u; // slot reservado para o processo gateway
     static const uint16_t GATEWAY_WRITER = 0xFFFEu; // diz que quem escreveu foi o gateway
 
 
@@ -56,7 +57,6 @@ namespace SHM {
         uint32_t magic;
         uint16_t component_count;
         uint8_t gateway_active;
-        unsigned char vm_mac[Ethernet::Address::LENGTH];
 
         Component_Entry components[MAX_COMPONENTS];
         Broadcast_Ring ring;

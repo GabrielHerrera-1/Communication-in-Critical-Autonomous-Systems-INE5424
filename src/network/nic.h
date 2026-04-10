@@ -26,6 +26,10 @@ public:
     typedef Conditional_Data_Observer<Buffer<Ethernet::Frame>, Ethernet::Protocol> Observer;
     typedef Conditionally_Data_Observed<Buffer<Ethernet::Frame>, Ethernet::Protocol> Observed;
 
+    static bool is_gateway_process() {
+        return Engine::is_gateway_process();
+    }
+
     struct Statistics {
         unsigned int tx_packets, rx_packets, tx_bytes, rx_bytes;
         Statistics() : tx_packets(0), rx_packets(0), tx_bytes(0), rx_bytes(0) {}

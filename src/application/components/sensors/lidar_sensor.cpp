@@ -19,3 +19,7 @@ void Lidar_Sensor::run() {
         std::this_thread::sleep_for(std::chrono::milliseconds(_interval_ms));
     }
 }
+
+Component::Port Lidar_Sensor::logical_port() const {
+    return Component_Ports::LIDAR_SENSOR;
+}

@@ -4,7 +4,9 @@
 #include <cstdint>
 #include <string>
 
-#include "../../communication/communication_endpoint.h"
+#include "../component_ports.h"
+#include "../vehicle_protocol.h"
+#include "../../communication/communicator.h"
 
 // classe base abstrata para qualquer componente do veiculo (sensor ou atuador)
 // cada componente roda como processo separado via fork()
@@ -19,18 +21,18 @@ public:
     virtual void initialize() = 0;
     // loop principal do componente, executado no processo filho
     virtual void run() = 0;
+    // porta logica fixa usada para identificar o tipo do componente
+    virtual Port logical_port() const = 0;
 
     const std::string& id() const;
 
-    // O endpoint concreto eh injetado pelo ambiente de execucao.
-    // Assim o componente nao conhece Vehicle_Protocol nem RawSocketEngine.
-    void set_endpoint(Communication_Endpoint * endpoint);
+    void set_communicator(Communicator<Vehicle_Protocol> * communicator);
     void set_port(Port port);
 
 protected:
     std::string _id;
     Port _port;
-    Communication_Endpoint * _endpoint;
+    Communicator<Vehicle_Protocol> * _communicator;
     
 };
 

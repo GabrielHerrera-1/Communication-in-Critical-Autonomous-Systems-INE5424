@@ -3,13 +3,9 @@
 
 #include "../network/nic.h"
 #include "../network/engine/raw_socket_engine.h"
+#include "../network/engine/shared_memory_engine.h"
 #include "../channel/protocol.h"
 
-// talvez fazer com que a engine seja generica
-class Vehicle_Protocol : public Protocol<NIC<RawSocketEngine>> {
-public:
-    
-    Vehicle_Protocol(NIC<RawSocketEngine> * nic) : Protocol<NIC<RawSocketEngine>>(nic) {}
-};
+using Vehicle_Protocol = Protocol<NIC<SharedMemoryEngine>, NIC<RawSocketEngine>>;
 
 #endif
