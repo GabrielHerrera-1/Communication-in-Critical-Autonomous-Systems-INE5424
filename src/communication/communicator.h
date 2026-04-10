@@ -14,7 +14,6 @@ public:
     typedef typename Channel::Address Address;
 
 public:
-    // o attach é no mesmo address, talvez deveria ser em um address de interesse
     Communicator(Channel * channel, Address address): Observer(), _channel(channel), _address(address) {
         _channel->attach(this, address);
     }
@@ -37,6 +36,7 @@ public:
         typename Channel::Address from;
         int size = _channel->receive(buf, &from, message->data(), message->size());
         message->size(size);
+        message->origin(typename Message::Origin(from.physical_address(), from.port()));
 
         if (size <= 0)
             return false;
