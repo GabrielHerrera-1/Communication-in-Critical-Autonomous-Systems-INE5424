@@ -131,15 +131,14 @@ public:
         
     }
     
-    // aqui talvez falta alguma coisa, talvez de endereçamento,
-    // pra identificar se pode ser uma mensagem puramente interna ou se é externa
-    // solução atual, se o mac do to 000000 significa local
-    //
+    
     static int send(Address from, Address to, const void *data, unsigned int size) {
 
         if (!_instance) return -1;
         
-        // se tem raw socket manda em raw socket
+        // decidimos que só os componentes de fato podem mandar mensagens, então isso aqui seria desnecessário
+        // mas como ja estava feito deixe pra garantir, não adiciona custo em runtime devido a constexpr 
+        // a decisão de roteamento é feita no update do gateway
         if constexpr (!std::is_void_v<RawSocketNIC>){
             if (_instance->_socket_nic && !to.is_internal()) {
                 return send_via_nic(_instance->_socket_nic, from, to, data, size);
@@ -153,10 +152,7 @@ public:
         
     };
 
-
-    // talvez tenha que ser um pouco diferente, utilizando um tipo de typed_nic_receive
-    // isso pra englobar o caso onde a comunicação é direcionada diretamente ao gateway
-    // (ou podemos invalidar esse caso)
+    // ja é genérico o suficiente, vai servir caso algum dia o gatewaw queira ler mensagens 
     static int receive(Buffer *buf, Address *from, void *data, unsigned int size) {
         if (!_instance || !buf) return -1;
         if (buf->size() < sizeof(Header)) {
@@ -175,6 +171,8 @@ public:
         if (data && data_size)
             memcpy(data, packet->data(), data_size);
 
+
+        // decide se é free no shm ou no raw socket
         free_buffer(buf);
         return static_cast<int>(data_size);
     }
@@ -195,29 +193,33 @@ private:
     void update(typename SharedMemoryNIC::Protocol_Number prot, Buffer *buf)
     {
 
-        // esse update pode ser chamdo tanto pela shm quanto pelo raw socket, dependendo de onde a mensagem chegou
-        // se chegou pela shm, mas o destino é externo, encaminha pela rede sem notificar os observers locais, porque a mensagem não é pra eles
-        // se chegou pelo raw socket, joga na shared memory pra notificar os observers locais, porque a mensagem é pra eles (ou pro gateway, que é um observer local)
-
         if (!buf) return;
         if (buf->size() < sizeof(Header)) {
             free_buffer(buf);
             return;
         }
 
+        Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         
         if constexpr (!std::is_void_v<RawSocketNIC>) {
             if (_socket_nic && _shm_nic->owns(buf)) {
                 Physical_Address dst_mac = buf->data()->dst();
-                if (!dst_mac.is_internal() && !Address::same_physical(Address(dst_mac, 0), _address)) {
-                    // Manda pelo raw socket porque o destino é externo
-                    _socket_nic->send(buf);
-                    return; 
+                Physical_Address src_mac = buf->data()->src();
+                if (src_mac == _address._paddr && dst_mac == Ethernet::Address::BROADCAST) {
+                    
+                    // Não podemos chamar _socket_nic->send(buf) diretamente porque isso faria o
+                    // _socket_nic tentar liberar um buffer que pertence ao _shm_nic, causando falha de segmentação.
+                    // Também não devemos usar send_via_nic aqui porque ele adicionaria um novo cabeçalho do Protocolo,
+                    // e nós queremos apenas repassar o frame Ethernet atual exatamente como está.
+                    
+                    Buffer* fwd_buf = _socket_nic->alloc(dst_mac, PROTO, buf->size());
+                    if (fwd_buf) {
+                        memcpy(fwd_buf->data()->payload(), buf->data()->payload(), buf->size());
+                        _socket_nic->send(fwd_buf);
+                    }
                 }
             }
         }
-
-        Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         bool notified = _observed.notify(packet->dst_port(), buf);
 
         if (!notified)
@@ -257,7 +259,7 @@ private:
 
 private:
     SharedMemoryNIC *_shm_nic;
-    RawSocketEngine *_socket_nic;
+    RawSocketNIC _socket_nic;
     Address _address;
     // Channel protocols are usually singletons
     static Observed _observed;
