@@ -158,6 +158,10 @@ public:
 
     void initialize() override {}
 
+    Port logical_port() const override {
+        return Component_Ports::TEST_RTT;
+    }
+
     void run() override {
         if (!_communicator) {
             std::cerr << "[" << _config.label << "][vm" << _vm_id
@@ -423,7 +427,7 @@ int main() {
     };
 
     Vehicle vehicle;
-    vehicle.add_component(new RTT_Component(config), 0x0000);
+    vehicle.add_component(new RTT_Component(config), Component_Ports::TEST_RTT);
     vehicle.initialize();
     vehicle.run();
     return 0;
