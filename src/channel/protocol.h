@@ -50,8 +50,7 @@ public:
         }
 
         static const Physical_Address& INTERNAL() {
-            static const Physical_Address addr(0x00,0x00,0x00,0x00,0x00,0x00);
-            return addr;
+            return Ethernet::Address::INTERNAL;
         }
 
         bool is_internal() const {

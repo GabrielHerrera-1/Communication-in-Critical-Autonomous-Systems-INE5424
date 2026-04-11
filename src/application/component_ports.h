@@ -16,6 +16,19 @@ public:
     static constexpr Port STEERING_ACTUATOR = 0x0203;
 
     static constexpr Port BROADCAST = 0xFFFF;
+
+    // Reservamos uma faixa alta para cenarios de teste para nao misturar
+    // trafego de validacao com IDs de componentes reais do veiculo.
+    static constexpr Port TEST_MESH = 0xF001;
+    static constexpr Port TEST_GATEWAY_PATH = 0xF002;
+    static constexpr Port TEST_LOCAL_BROADCAST_BASIC_SENDER = 0xF101;
+    static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_A = 0xF102;
+    static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_B = 0xF103;
+    static constexpr Port TEST_LOCAL_BROADCAST_A = 0xF201;
+    static constexpr Port TEST_LOCAL_BROADCAST_B = 0xF202;
+    static constexpr Port TEST_LOCAL_BROADCAST_C = 0xF203;
+    static constexpr Port TEST_LOCAL_BROADCAST_D = 0xF204;
+    static constexpr Port TEST_LOCAL_BROADCAST_E = 0xF205;
 };
 
 #endif

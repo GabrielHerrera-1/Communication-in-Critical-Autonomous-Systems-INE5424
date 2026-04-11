@@ -10,10 +10,10 @@
 namespace {
 
 static const char PAYLOAD[] = "local-broadcast-basic:payload";
-static const Ethernet::Address INTERNAL_ADDRESS(0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-static const uint16_t SENDER_PORT = 0x3001;
-static const uint16_t RECEIVER_A_PORT = 0x3002;
-static const uint16_t RECEIVER_B_PORT = 0x3003;
+static const Ethernet::Address INTERNAL_ADDRESS = Ethernet::Address::INTERNAL;
+static const uint16_t SENDER_PORT = Component_Ports::TEST_LOCAL_BROADCAST_BASIC_SENDER;
+static const uint16_t RECEIVER_A_PORT = Component_Ports::TEST_LOCAL_BROADCAST_BASIC_RECEIVER_A;
+static const uint16_t RECEIVER_B_PORT = Component_Ports::TEST_LOCAL_BROADCAST_BASIC_RECEIVER_B;
 
 class Local_Broadcast_Sender : public Component {
 public:

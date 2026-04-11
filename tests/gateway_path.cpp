@@ -14,7 +14,7 @@ namespace {
 static const int VM_COUNT = 2;
 static const int INITIATOR_VM_ID = 1;
 static const int RESPONDER_VM_ID = 2;
-static const uint16_t COMPONENT_PORT = 0x1234;
+static const uint16_t COMPONENT_PORT = Component_Ports::TEST_GATEWAY_PATH;
 
 int detect_vm_id() {
     FILE * cmdline = std::fopen("/proc/cmdline", "r");

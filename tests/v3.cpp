@@ -115,7 +115,7 @@ public:
     }
 
     Port logical_port() const override {
-        return 0x0000;
+        return Component_Ports::TEST_MESH;
     }
 
 private:
@@ -270,7 +270,7 @@ int main() {
     };
 
     Vehicle vehicle;
-    vehicle.add_component(new Mesh_Component(config), 0x0000);
+    vehicle.add_component(new Mesh_Component(config), Component_Ports::TEST_MESH);
     vehicle.initialize();
     vehicle.run();
     return 0;

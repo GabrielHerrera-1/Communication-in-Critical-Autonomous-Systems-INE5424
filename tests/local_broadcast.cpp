@@ -11,7 +11,7 @@
 
 namespace {
 
-static const Ethernet::Address INTERNAL_ADDRESS(0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+static const Ethernet::Address INTERNAL_ADDRESS = Ethernet::Address::INTERNAL;
 static const unsigned int MESSAGE_COUNT_PER_SENDER = 2;
 static const unsigned int SENDER_COUNT = 3;
 
@@ -23,11 +23,11 @@ struct Participant_Config {
 };
 
 static const Participant_Config PARTICIPANTS[] = {
-    {"local-broadcast-sender-a", 0x3101, true,  'A'},
-    {"local-broadcast-sender-b", 0x3102, true,  'B'},
-    {"local-broadcast-sender-c", 0x3103, true,  'C'},
-    {"local-broadcast-listener-d", 0x3104, false, 'D'},
-    {"local-broadcast-listener-e", 0x3105, false, 'E'},
+    {"local-broadcast-sender-a", Component_Ports::TEST_LOCAL_BROADCAST_A, true,  'A'},
+    {"local-broadcast-sender-b", Component_Ports::TEST_LOCAL_BROADCAST_B, true,  'B'},
+    {"local-broadcast-sender-c", Component_Ports::TEST_LOCAL_BROADCAST_C, true,  'C'},
+    {"local-broadcast-listener-d", Component_Ports::TEST_LOCAL_BROADCAST_D, false, 'D'},
+    {"local-broadcast-listener-e", Component_Ports::TEST_LOCAL_BROADCAST_E, false, 'E'},
 };
 
 bool is_sender_port(uint16_t port) {

@@ -34,6 +34,10 @@ public:
 
         // declaracao do endereço broadcast
         static const Address BROADCAST; 
+        // endereco sentinela usado para o barramento interno via SHM.
+        // Mantemos isso centralizado aqui para que testes e pilha usem a
+        // mesma convencao e nao espalhem "00:00:00:00:00:00" pelo codigo.
+        static const Address INTERNAL;
         
         // definindo o que significa dois Address serem iguais. sobrecarga de operador
         bool operator == (const Address& o) const {
