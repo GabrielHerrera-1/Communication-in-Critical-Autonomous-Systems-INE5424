@@ -22,6 +22,36 @@ LOGS_DIR=${LOGS_DIR:-$REPO_ROOT/logs}
 KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-1}
 ARTIFACTS_FILE=${ARTIFACTS_FILE:-}
 
+if [ -t 1 ]; then
+    COLOR_RED=$(printf '\033[31m')
+    COLOR_GREEN=$(printf '\033[32m')
+    COLOR_YELLOW=$(printf '\033[33m')
+    COLOR_BLUE=$(printf '\033[34m')
+    COLOR_RESET=$(printf '\033[0m')
+else
+    COLOR_RED=''
+    COLOR_GREEN=''
+    COLOR_YELLOW=''
+    COLOR_BLUE=''
+    COLOR_RESET=''
+fi
+
+info() {
+    printf '%s%s%s\n' "$COLOR_BLUE" "$1" "$COLOR_RESET"
+}
+
+success() {
+    printf '%s%s%s\n' "$COLOR_GREEN" "$1" "$COLOR_RESET"
+}
+
+warn() {
+    printf '%s%s%s\n' "$COLOR_YELLOW" "$1" "$COLOR_RESET"
+}
+
+error() {
+    printf '%s%s%s\n' "$COLOR_RED" "$1" "$COLOR_RESET" >&2
+}
+
 KERNEL="$REPO_ROOT/kernel/Image"
 BASE_INITRAMFS="$REPO_ROOT/kernel/initramfs.cpio"
 BINARY_PATH="$REPO_ROOT/$BINARY_REL"
@@ -51,12 +81,12 @@ cleanup() {
         fi
     done
     if [ $status -ne 0 ]; then
-        echo "[test:$SCENARIO_NAME] logs preservados em $LOG_DIR" >&2
-        echo "[test:$SCENARIO_NAME] initramfs preservado em $INITRAMFS_PATH" >&2
+        error "[test:$SCENARIO_NAME] logs preservados em $LOG_DIR"
+        error "[test:$SCENARIO_NAME] initramfs preservado em $INITRAMFS_PATH"
         exit $status
     fi
     if [ "$KEEP_ARTIFACTS" = "1" ]; then
-        echo "[test:$SCENARIO_NAME] artefatos preservados em $TMP_ROOT"
+        success "[test:$SCENARIO_NAME] artefatos preservados em $TMP_ROOT"
         exit 0
     fi
     rm -f "$SCENARIO_LATEST_LINK" "$GLOBAL_LATEST_LINK"
@@ -104,14 +134,14 @@ success_highlight() {
 }
 
 if [ ! -x "$BINARY_PATH" ]; then
-    echo "[test:$SCENARIO_NAME] binario ausente ou sem permissao: $BINARY_PATH" >&2
+    error "[test:$SCENARIO_NAME] binario ausente ou sem permissao: $BINARY_PATH"
     exit 1
 fi
 
 mkdir -p "$LOG_DIR"
 
-echo "[test:$SCENARIO_NAME] preparando initramfs temporario"
-echo "[test:$SCENARIO_NAME] logs em $LOG_DIR"
+info "[test:$SCENARIO_NAME] preparando initramfs temporario"
+info "[test:$SCENARIO_NAME] logs em $LOG_DIR"
 
 WORKDIR=$(mktemp -d "/tmp/${SCENARIO_NAME}-rootfs.XXXXXX")
 (
@@ -139,7 +169,7 @@ EOF
 )
 rm -rf "$WORKDIR"
 
-echo "[test:$SCENARIO_NAME] subindo $VM_COUNT VM(s) com cpu=$QEMU_CPU"
+info "[test:$SCENARIO_NAME] subindo $VM_COUNT VM(s) com cpu=$QEMU_CPU"
 
 vm_index=1
 while [ "$vm_index" -le "$VM_COUNT" ]; do
@@ -161,7 +191,7 @@ while [ "$vm_index" -le "$VM_COUNT" ]; do
     vm_index=$(expr "$vm_index" + 1)
 done
 
-echo "[test:$SCENARIO_NAME] aguardando encerramento das VM(s) (timeout ${TIMEOUT_SEC}s)"
+info "[test:$SCENARIO_NAME] aguardando encerramento das VM(s) (timeout ${TIMEOUT_SEC}s)"
 
 start_ts=$(date +%s)
 last_reported=0
@@ -187,7 +217,7 @@ while :; do
 
     if [ "$success_count" -eq "$VM_COUNT" ]; then
         completed=1
-        echo "[test:$SCENARIO_NAME] criterios de sucesso observados nos logs; encerrando VM(s)"
+        success "[test:$SCENARIO_NAME] criterios de sucesso observados nos logs; encerrando VM(s)"
         break
     fi
 
@@ -198,10 +228,10 @@ while :; do
     now_ts=$(date +%s)
     elapsed=$((now_ts - start_ts))
     if [ "$elapsed" -ge "$TIMEOUT_SEC" ]; then
-        echo "[test:$SCENARIO_NAME] timeout aguardando as VM(s)" >&2
+        error "[test:$SCENARIO_NAME] timeout aguardando as VM(s)"
         for logfile in "$LOG_DIR"/vm*.log; do
             if [ -f "$logfile" ]; then
-                echo "[test:$SCENARIO_NAME] ultimas linhas de $logfile" >&2
+                warn "[test:$SCENARIO_NAME] ultimas linhas de $logfile"
                 tail -n 40 "$logfile" >&2 || true
             fi
         done
@@ -209,7 +239,7 @@ while :; do
     fi
 
     if [ "$elapsed" -ge $((last_reported + 10)) ]; then
-        echo "[test:$SCENARIO_NAME] ainda aguardando... ${elapsed}s"
+        warn "[test:$SCENARIO_NAME] ainda aguardando... ${elapsed}s"
         last_reported=$elapsed
     fi
 
@@ -230,23 +260,23 @@ vm_index=1
 while [ "$vm_index" -le "$VM_COUNT" ]; do
     logfile="$LOG_DIR/vm${vm_index}.log"
     if ! log_matches_expectations "$logfile"; then
-        echo "[test:$SCENARIO_NAME] padrao de sucesso ausente em $logfile" >&2
+        error "[test:$SCENARIO_NAME] padrao de sucesso ausente em $logfile"
         tail -n 40 "$logfile" >&2 || true
         exit 1
     fi
 
     highlight=$(success_highlight "$logfile" || true)
     if [ -n "$highlight" ]; then
-        echo "[test:$SCENARIO_NAME] vm${vm_index} ok: $highlight"
+        success "[test:$SCENARIO_NAME] vm${vm_index} ok: $highlight"
     else
-        echo "[test:$SCENARIO_NAME] vm${vm_index} ok"
+        success "[test:$SCENARIO_NAME] vm${vm_index} ok"
     fi
     vm_index=$(expr "$vm_index" + 1)
 done
 
 if [ "$completed" -ne 1 ]; then
-    echo "[test:$SCENARIO_NAME] as VM(s) encerraram sem satisfazer todos os criterios de sucesso" >&2
+    error "[test:$SCENARIO_NAME] as VM(s) encerraram sem satisfazer todos os criterios de sucesso"
     exit 1
 fi
 
-echo "[test:$SCENARIO_NAME] suite concluida"
+success "[test:$SCENARIO_NAME] suite concluida"

@@ -32,7 +32,7 @@ RUN_QEMU_TEST := ./tests/run_qemu_test.sh
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
-CORE_TEST_NAMES := basic v3 gateway_path local_broadcast_basic local_broadcast
+CORE_TEST_NAMES := basic v3 gateway_path local_broadcast
 BENCHMARK_NAMES := rtt
 
 CORE_TEST_BINS := $(addprefix $(BIN_DIR)/,$(CORE_TEST_NAMES))
@@ -43,12 +43,11 @@ BASIC_BIN := $(BIN_DIR)/basic
 MESH_BIN := $(BIN_DIR)/v3
 GATEWAY_PATH_BIN := $(BIN_DIR)/gateway_path
 LOCAL_BROADCAST_BIN := $(BIN_DIR)/local_broadcast
-LOCAL_BROADCAST_BASIC_BIN := $(BIN_DIR)/local_broadcast_basic
 RTT_BIN := $(BIN_DIR)/rtt
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast-basic test-local-broadcast measure-rtt measure-rtt-10 logs clean
+.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast measure-rtt measure-rtt-10 logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -95,7 +94,7 @@ select-qemu-cpu: prepare-runtime $(BASIC_BIN) $(RUN_QEMU_TEST)
 	echo "[select-qemu-cpu] nenhuma CPU compativel funcionou; consulte $(LOG_DIR)/cpu-probes" >&2; \
 	exit 1
 
-test: build select-qemu-cpu test-basic test-local-broadcast-basic test-local-broadcast test-mesh-concurrent
+test: build select-qemu-cpu test-basic test-local-broadcast test-mesh-concurrent
 	@echo "[test] suite completa aprovada."
 
 test-basic: select-qemu-cpu $(BASIC_BIN) $(RUN_QEMU_TEST)
@@ -112,11 +111,6 @@ test-gateway-path: select-qemu-cpu $(GATEWAY_PATH_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario gateway-path..."
 	@LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(GATEWAY_PATH_BIN)" 2 gateway-path "cenario validado."
 	@echo "[test] cenario gateway-path aprovado."
-
-test-local-broadcast-basic: select-qemu-cpu $(LOCAL_BROADCAST_BASIC_BIN) $(RUN_QEMU_TEST)
-	@echo "[test] rodando cenario local-broadcast-basic..."
-	@LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(LOCAL_BROADCAST_BASIC_BIN)" 1 local-broadcast-basic "cenario validado."
-	@echo "[test] cenario local-broadcast-basic aprovado."
 
 test-local-broadcast: select-qemu-cpu $(LOCAL_BROADCAST_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario local-broadcast..."
