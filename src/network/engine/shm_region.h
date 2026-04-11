@@ -34,6 +34,7 @@ namespace SHM {
         uint16_t port; // identificador logico do componente ou tipo de componente
         uint16_t slot; // indice fixo no registro
         uint8_t active; // 1 quando ta em uso
+        uint8_t receiver_ready; // 1 quando a recepcao assincrona local ja esta armada
     };
 
     // cada posicao do ring buffer é um Broadcast_Slot. representa msg ou frame em circulação
@@ -57,6 +58,8 @@ namespace SHM {
         uint32_t magic;
         uint16_t component_count;
         uint8_t gateway_active;
+        uint16_t bootstrap_ready_count;
+        uint8_t bootstrap_released;
 
         Component_Entry components[MAX_COMPONENTS];
         Broadcast_Ring ring;

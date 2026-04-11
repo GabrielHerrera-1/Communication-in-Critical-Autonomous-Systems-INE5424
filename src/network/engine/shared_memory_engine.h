@@ -46,6 +46,11 @@ public:
     // o papel do processo eh definido no bootstrap via slot reservado
     static bool is_gateway_process();
 
+    // barreira de bootstrap do runtime: gateway e componentes so entram no
+    // run() depois que todos montaram protocol/communicator e a recepcao
+    // assincrona da SHM ja foi armada de fato.
+    static bool wait_until_all_processes_ready();
+
 public:
     SharedMemoryEngine();
 
@@ -77,7 +82,9 @@ private:
         SEM_RING_MUTEX = 0, // pra acessar ring buffer e atualizar contadores
         SEM_FREE_SLOTS = 1, // quantos slots podem ser reutilizados
         SEM_GATEWAY_PENDING = 2, // quantas msgs o gateway ainda precisa consumir
-        SEM_COMPONENT_PENDING_BASE = 3 // quantas msgs o componente i ainda precisa consumir. cada componente tem seu proprio contador de mensagens pendentes
+        SEM_BOOTSTRAP_MUTEX = 3, // serializa a barreira de startup
+        SEM_BOOTSTRAP_RELEASE = 4, // libera gateway e componentes ao mesmo tempo
+        SEM_COMPONENT_PENDING_BASE = 5 // quantas msgs o componente i ainda precisa consumir. cada componente tem seu proprio contador de mensagens pendentes
     };
 
 private:
@@ -93,6 +100,7 @@ private:
     // e depois fazer shmdt pra desanexar. esses metodos fazem isso
     bool attach_region();
     void detach_region();
+    bool set_receiver_ready(bool ready);
 
     // responde em qual semaforo essa instancia deve esperar por mensagens. evita codigo desnecessario dps
     int pending_semaphore() const;

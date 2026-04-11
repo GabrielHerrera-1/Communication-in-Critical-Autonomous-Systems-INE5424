@@ -9,6 +9,7 @@
 #include "vehicle_protocol.h"
 #include "components/component.h"
 #include <vector>
+#include <sys/types.h>
 
 class Vehicle {
 public:
@@ -28,6 +29,12 @@ public:
     void run();
 
 private:
+    int run_gateway_process();
+    pid_t spawn_component_process(unsigned int index,
+                                  const SharedMemoryEngine::Context & context);
+    int run_component_process(unsigned int index,
+                              const SharedMemoryEngine::Context & context);
+    std::vector<uint16_t> component_ports() const;
 
     std::vector<Component_Port_Pair> _components;
     Gateway _gateway;

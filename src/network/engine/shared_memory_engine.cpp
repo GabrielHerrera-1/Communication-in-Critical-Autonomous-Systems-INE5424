@@ -7,6 +7,7 @@
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <sys/shm.h>
+#include <unistd.h>
 
 namespace {
 
@@ -117,6 +118,9 @@ SharedMemoryEngine::Context SharedMemoryEngine::create(
     values[SEM_FREE_SLOTS] = SHM::SLOT_COUNT;
     // gateway sem mensagens
     values[SEM_GATEWAY_PENDING] = 0;
+    // bootstrap fechado ate gateway e componentes declararem readiness
+    values[SEM_BOOTSTRAP_MUTEX] = 1;
+    values[SEM_BOOTSTRAP_RELEASE] = 0;
 
     // componentes sem msgs pendentes de inicio
     for (unsigned int i = 0; i < registered_slots; ++i) {
@@ -164,6 +168,129 @@ bool SharedMemoryEngine::is_gateway_process() {
     return _configuration_ready && (_configuration.slot == SHM::GATEWAY_SLOT);
 }
 
+bool SharedMemoryEngine::wait_until_all_processes_ready() {
+    if (!_configuration_ready) {
+        std::fprintf(stderr, "[SharedMemoryEngine] configuration ausente no bootstrap barrier\n");
+        return false;
+    }
+
+    void * raw = shmat(_configuration.context.shmid, nullptr, 0);
+    if (raw == reinterpret_cast<void *>(-1)) {
+        std::perror("[SharedMemoryEngine] shmat(barrier)");
+        return false;
+    }
+
+    SHM::Region * region = reinterpret_cast<SHM::Region *>(raw);
+    if (region->magic != SHM::MAGIC) {
+        std::fprintf(stderr, "[SharedMemoryEngine] region invalida no bootstrap barrier\n");
+        shmdt(region);
+        return false;
+    }
+
+    auto wait_sem = [&](int sem_index) -> bool {
+        struct sembuf op = {};
+        op.sem_num = static_cast<unsigned short>(sem_index);
+        op.sem_op = -1;
+        op.sem_flg = 0;
+
+        while (semop(_configuration.context.semid, &op, 1) < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            std::perror("[SharedMemoryEngine] semop(wait bootstrap)");
+            return false;
+        }
+        return true;
+    };
+
+    auto signal_sem = [&](int sem_index) -> bool {
+        struct sembuf op = {};
+        op.sem_num = static_cast<unsigned short>(sem_index);
+        op.sem_op = 1;
+        op.sem_flg = 0;
+
+        if (semop(_configuration.context.semid, &op, 1) < 0) {
+            std::perror("[SharedMemoryEngine] semop(signal bootstrap)");
+            return false;
+        }
+        return true;
+    };
+
+    bool counted = false;
+    unsigned int attempts = 0;
+    static const unsigned int MAX_ATTEMPTS = 30000; // ~30s com sleep de 1ms
+
+    while (true) {
+        if (!wait_sem(SEM_BOOTSTRAP_MUTEX)) {
+            shmdt(region);
+            return false;
+        }
+
+        if (!counted) {
+            ++region->bootstrap_ready_count;
+            counted = true;
+        }
+
+        if (region->bootstrap_released) {
+            if (!signal_sem(SEM_BOOTSTRAP_MUTEX)) {
+                shmdt(region);
+                return false;
+            }
+            shmdt(region);
+            return true;
+        }
+
+        const bool everyone_arrived =
+            (region->bootstrap_ready_count == region->component_count);
+
+        bool receivers_ready = true;
+        for (unsigned int i = 0; i < region->component_count; ++i) {
+            if (!region->components[i].receiver_ready) {
+                receivers_ready = false;
+                break;
+            }
+        }
+
+        if (everyone_arrived && receivers_ready) {
+            region->bootstrap_released = 1;
+
+            if (!signal_sem(SEM_BOOTSTRAP_MUTEX)) {
+                shmdt(region);
+                return false;
+            }
+
+            // A nova topologia deixa o gateway criar a SHM e forkar os
+            // componentes. Para o bootstrap ficar deterministico, so soltamos
+            // o run() quando todos chegaram aqui e cada receiver local ja
+            // publicou que sua recepcao assincrona foi armada de verdade.
+            for (unsigned int i = 0; i < region->component_count; ++i) {
+                if (!signal_sem(SEM_BOOTSTRAP_RELEASE)) {
+                    shmdt(region);
+                    return false;
+                }
+            }
+            break;
+        }
+
+        if (!signal_sem(SEM_BOOTSTRAP_MUTEX)) {
+            shmdt(region);
+            return false;
+        }
+
+        if (++attempts >= MAX_ATTEMPTS) {
+            std::fprintf(stderr, "[SharedMemoryEngine] timeout no bootstrap barrier\n");
+            shmdt(region);
+            return false;
+        }
+
+        usleep(1000);
+    }
+
+    const bool released = wait_sem(SEM_BOOTSTRAP_RELEASE);
+    shmdt(region);
+    return released;
+}
+
 SharedMemoryEngine::SharedMemoryEngine()
 : _context{-1, -1},
   _region(nullptr),
@@ -198,8 +325,10 @@ void SharedMemoryEngine::engine_init(const char *) {
 
     if (_gateway) {
         _region->gateway_active = 1;
+        _region->components[SHM::GATEWAY_SLOT].receiver_ready = 0;
     } else if (_slot < _region->component_count) {
         _region->components[_slot].active = 1;
+        _region->components[_slot].receiver_ready = 0;
     }
 
     signal_semaphore(SEM_RING_MUTEX);
@@ -248,8 +377,10 @@ void SharedMemoryEngine::engine_close() {
     if (_region && wait_semaphore(SEM_RING_MUTEX)) {
         if (_gateway) {
             _region->gateway_active = 0;
+            _region->components[SHM::GATEWAY_SLOT].receiver_ready = 0;
         } else if (_slot < _region->component_count) {
             _region->components[_slot].active = 0;
+            _region->components[_slot].receiver_ready = 0;
         }
         signal_semaphore(SEM_RING_MUTEX);
     }
@@ -262,6 +393,11 @@ void SharedMemoryEngine::start_receiving() {
 
     _worker = std::thread([this]() {
         unsigned char frame[SHM::FRAME_SIZE];
+
+        if (!set_receiver_ready(true)) {
+            _running_receiver = false;
+            return;
+        }
 
         while (_running_receiver) {
             // bloqueante: espera V() no semaforo pendente (o signal)
@@ -287,6 +423,22 @@ void SharedMemoryEngine::start_receiving() {
             engine_set_nonblocking(false);
         }
     });
+}
+
+bool SharedMemoryEngine::set_receiver_ready(bool ready) {
+    if (!_region) {
+        return false;
+    }
+
+    if (!wait_semaphore(SEM_RING_MUTEX)) {
+        return false;
+    }
+
+    if (_slot < _region->component_count) {
+        _region->components[_slot].receiver_ready = ready ? 1 : 0;
+    }
+
+    return signal_semaphore(SEM_RING_MUTEX);
 }
 
 void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
