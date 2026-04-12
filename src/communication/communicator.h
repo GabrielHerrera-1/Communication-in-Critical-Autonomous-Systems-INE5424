@@ -17,17 +17,14 @@ public:
 public:
     Communicator(Channel * channel, Address address): Observer(), _channel(channel), _address(address) {
         _channel->attach(this, address);
-        _broadcast_address = Address(address.paddr(), Component_Ports::BROADCAST);
-        _channel->attach(this, _broadcast_address);
     }
 
     ~Communicator() {
         _channel->detach(this, _address);
-        _channel->detach(this, _broadcast_address);
     }
 
     bool send(const Message * message) {
-        return (_channel->send(_address, Channel::Address::physical_broadcast(Component_Ports::BROADCAST),
+        return (_channel->send(_address, Channel::Address::physical_broadcast(_address.port()),
                                message->data(), message->size()) > 0);
     }
 
@@ -58,7 +55,6 @@ private:
 private:
     Channel * _channel;
     Address _address;
-    Address _broadcast_address;
 };
 
 #endif

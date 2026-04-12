@@ -24,31 +24,13 @@ struct Participant_Config {
 
 static const Participant_Config PARTICIPANTS[] = {
     {"local-broadcast-sender-a", Component_Ports::TEST_LOCAL_BROADCAST_A, true,  'A'},
-    {"local-broadcast-sender-b", Component_Ports::TEST_LOCAL_BROADCAST_B, true,  'B'},
-    {"local-broadcast-sender-c", Component_Ports::TEST_LOCAL_BROADCAST_C, true,  'C'},
-    {"local-broadcast-listener-d", Component_Ports::TEST_LOCAL_BROADCAST_D, false, 'D'},
-    {"local-broadcast-listener-e", Component_Ports::TEST_LOCAL_BROADCAST_E, false, 'E'},
+    {"local-broadcast-sender-b", Component_Ports::TEST_LOCAL_BROADCAST_A, true,  'B'},
+    {"local-broadcast-sender-c", Component_Ports::TEST_LOCAL_BROADCAST_A, true,  'C'},
+    {"local-broadcast-listener-d", Component_Ports::TEST_LOCAL_BROADCAST_A, false, 'D'},
+    {"local-broadcast-listener-e", Component_Ports::TEST_LOCAL_BROADCAST_A, false, 'E'},
 };
 
-bool is_sender_port(uint16_t port) {
-    for (const auto & participant : PARTICIPANTS) {
-        if (participant.port == port) {
-            return participant.sends;
-        }
-    }
-    return false;
-}
-
-char sender_tag_for_port(uint16_t port) {
-    for (const auto & participant : PARTICIPANTS) {
-        if (participant.port == port) {
-            return participant.sender_tag;
-        }
-    }
-    return '?';
-}
-
-unsigned int expected_receive_count(uint16_t self_port, bool self_sends) {
+unsigned int expected_receive_count(bool self_sends) {
     const unsigned int total_broadcast_messages = SENDER_COUNT * MESSAGE_COUNT_PER_SENDER;
     if (!self_sends) {
         return total_broadcast_messages;
@@ -134,7 +116,7 @@ private:
     }
 
     void receive_expected_messages() {
-        const unsigned int expected = expected_receive_count(_config.port, _config.sends);
+        const unsigned int expected = expected_receive_count(_config.sends);
         bool seen[SENDER_COUNT][MESSAGE_COUNT_PER_SENDER] = {};
         unsigned int received = 0;
 
@@ -156,7 +138,7 @@ private:
                 continue;
             }
 
-            if (_config.sends && participant.port == _config.port) {
+            if (_config.sends && participant.sender_tag == _config.sender_tag) {
                 continue;
             }
 
@@ -201,26 +183,13 @@ private:
             std::exit(1);
         }
 
-        const uint16_t origin_port = inbound.origin().port;
-        if (!is_sender_port(origin_port)) {
-            std::cerr << "[local-broadcast] " << id()
-                      << " porta de origem invalida: " << origin_port << std::endl;
-            std::exit(1);
-        }
-
-        if (sender_tag_for_port(origin_port) != sender_tag) {
-            std::cerr << "[local-broadcast] " << id()
-                      << " sender no payload nao bate com origin.port" << std::endl;
-            std::exit(1);
-        }
-
         if (inbound.origin().address != INTERNAL_ADDRESS) {
             std::cerr << "[local-broadcast] " << id()
                       << " endereco de origem local inesperado" << std::endl;
             std::exit(1);
         }
 
-        if (_config.sends && origin_port == _config.port) {
+        if (_config.sends && sender_tag == _config.sender_tag) {
             std::cerr << "[local-broadcast] " << id()
                       << " recebeu a propria mensagem (self-drop falhou)" << std::endl;
             std::exit(1);
