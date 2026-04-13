@@ -9,6 +9,7 @@
 #include "../core/buffer.h"
 #include "../core/traits.h"
 #include <cstring>
+#include <limits>
 #include <type_traits>
 
 // Communication Protocol
@@ -44,6 +45,12 @@ public:
         Address(Physical_Address paddr, Port port) : _paddr(paddr), _port(port) {}
         // broadcast fisico sempre preserva a porta logica do endpoint
         static Address physical_broadcast(Port port) { return Address(Ethernet::Address::BROADCAST, port); }
+        // O broadcast logico da biblioteca precisa ser um endereco explicito da
+        // pilha, e nao um detalhe codificado dentro do Communicator. Assim cada
+        // componente pode manter sua propria porta e ainda ouvir o grupo de
+        // broadcast sem perder a identificacao do emissor em src_port.
+        static Address logical_broadcast() { return physical_broadcast(broadcast_port()); }
+        static constexpr Port broadcast_port() { return std::numeric_limits<Port>::max(); }
 
         static bool same_physical(const Address &addr1, const Address &addr2) {
             return (addr1._paddr == addr2._paddr);
