@@ -7,6 +7,7 @@ TEST_DIR := tests
 BUILD_DIR ?= build
 OBJ_DIR := $(BUILD_DIR)/obj
 BIN_DIR := $(BUILD_DIR)/tests
+LIB_DIR := $(BUILD_DIR)/lib
 LOG_DIR ?= logs
 
 QEMU ?= qemu-system-riscv64
@@ -23,6 +24,12 @@ CXX := $(CROSS_COMPILE)g++
 endif
 ifeq ($(origin CXX), undefined)
 CXX := $(CROSS_COMPILE)g++
+endif
+ifeq ($(origin AR), default)
+AR := $(CROSS_COMPILE)ar
+endif
+ifeq ($(origin AR), undefined)
+AR := $(CROSS_COMPILE)ar
 endif
 CXXFLAGS ?= -static -I$(SRC_DIR) -MMD -MP
 LDFLAGS ?=
@@ -46,18 +53,24 @@ LOCAL_BROADCAST_BIN := $(BIN_DIR)/local_broadcast
 RTT_BIN := $(BIN_DIR)/rtt
 STRESS_BIN := $(BIN_DIR)/stress
 RTT_INTRA_BIN := $(BIN_DIR)/rtt_intra
+LIB_NAME := so2
+STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress measure-rtt measure-rtt-intra measure-rtt-10 logs clean
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress measure-rtt measure-rtt-intra measure-rtt-10 logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
 
 all: test
 
 build:
-	@$(MAKE) --no-print-directory -j$(JOBS) $(CORE_TEST_BINS)
+	@$(MAKE) --no-print-directory -j$(JOBS) lib $(CORE_TEST_BINS)
+	@echo "[build] biblioteca estatica em $(STATIC_LIB)."
 	@echo "[build] binarios de teste atualizados em $(BIN_DIR)."
+
+lib: $(STATIC_LIB)
+	@echo "[lib] biblioteca estatica atualizada em $(STATIC_LIB)."
 
 prepare-runtime: stop-qemu
 	@mkdir -p "$(LOG_DIR)"
@@ -161,9 +174,13 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(BIN_DIR)/%: $(TEST_DIR)/%.cpp $(OBJS)
+$(STATIC_LIB): $(OBJS)
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(CXXFLAGS) $< $(OBJS) $(LDFLAGS) -o $@
+	$(AR) rcs $@ $^
+
+$(BIN_DIR)/%: $(TEST_DIR)/%.cpp $(STATIC_LIB)
+	@mkdir -p "$(dir $@)"
+	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -l$(LIB_NAME) $(LDFLAGS) -o $@
 
 clean:
 	rm -rf "$(BUILD_DIR)"
