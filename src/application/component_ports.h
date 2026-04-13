@@ -22,6 +22,8 @@ public:
     static constexpr Port TEST_MESH = 0xF001;
     static constexpr Port TEST_GATEWAY_PATH = 0xF002;
     static constexpr Port TEST_RTT = 0xF003;
+    static constexpr Port TEST_RTT_INTRA_INITIATOR = 0xF004;
+    static constexpr Port TEST_RTT_INTRA_RESPONDER = 0xF005;
     static constexpr Port TEST_LOCAL_BROADCAST_BASIC_SENDER = 0xF101;
     static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_A = 0xF102;
     static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_B = 0xF103;

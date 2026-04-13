@@ -33,7 +33,7 @@ SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
 CORE_TEST_NAMES := basic v3 gateway_path local_broadcast
-BENCHMARK_NAMES := rtt stress
+BENCHMARK_NAMES := rtt stress rtt_intra
 
 CORE_TEST_BINS := $(addprefix $(BIN_DIR)/,$(CORE_TEST_NAMES))
 BENCHMARK_BINS := $(addprefix $(BIN_DIR)/,$(BENCHMARK_NAMES))
@@ -45,10 +45,11 @@ GATEWAY_PATH_BIN := $(BIN_DIR)/gateway_path
 LOCAL_BROADCAST_BIN := $(BIN_DIR)/local_broadcast
 RTT_BIN := $(BIN_DIR)/rtt
 STRESS_BIN := $(BIN_DIR)/stress
+RTT_INTRA_BIN := $(BIN_DIR)/rtt_intra
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress measure-rtt measure-rtt-10 logs clean
+.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress measure-rtt measure-rtt-intra measure-rtt-10 logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -130,6 +131,15 @@ measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_r
 	artifacts_root=$$(cat $$artifacts_file); \
 	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log"; \
 	echo "[measure-rtt] logs preservados em $$artifacts_root/logs"; \
+	rm -f $$artifacts_file
+
+measure-rtt-intra: select-qemu-cpu $(RTT_INTRA_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
+	@set -e; \
+	artifacts_file=$$(mktemp /tmp/so2-rtt-intra-artifacts.XXXXXX); \
+	KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(RTT_INTRA_BIN)" 1 rtt-intra-benchmark "RTT intra benchmark concluido."; \
+	artifacts_root=$$(cat $$artifacts_file); \
+	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log"; \
+	echo "[measure-rtt-intra] logs preservados em $$artifacts_root/logs"; \
 	rm -f $$artifacts_file
 
 measure-rtt-10: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py $(TEST_DIR)/measure_rtt_batch.py
