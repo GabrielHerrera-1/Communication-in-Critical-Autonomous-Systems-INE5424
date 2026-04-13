@@ -30,6 +30,8 @@ public:
     static constexpr Port TEST_LOCAL_BROADCAST_C = 0xF203;
     static constexpr Port TEST_LOCAL_BROADCAST_D = 0xF204;
     static constexpr Port TEST_LOCAL_BROADCAST_E = 0xF205;
+    static constexpr Port TEST_STRESS_SENDER = 0xF301;
+    static constexpr Port TEST_STRESS_LISTENER = 0xF302;
 };
 
 #endif

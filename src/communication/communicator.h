@@ -14,18 +14,26 @@ public:
     typedef typename Channel::Address Address;
 
 public:
-    Communicator(Channel * channel, Address address): Observer(), _channel(channel), _address(address) {
+    Communicator(Channel * channel, Address address, bool subscribe_broadcast = true)
+        : Observer(),
+          _channel(channel),
+          _address(address),
+          _broadcast_address(Address::logical_broadcast()),
+          _subscribed_to_broadcast(subscribe_broadcast) {
         _channel->attach(this, address);
-        // O componente observa a propria porta e o grupo de broadcast logico.
-        // Isso preserva portas individuais para identificar origem/resposta,
-        // sem depender de um valor "magico" vindo da camada de aplicacao.
-        _broadcast_address = Address::logical_broadcast();
-        _channel->attach(this, _broadcast_address);
+        // Alguns componentes sao send-only e nunca drenam a fila entregue ao
+        // broadcast logico. Nesses casos mantemos apenas a escuta da propria
+        // porta para evitar exaurir o pool de buffers local.
+        if (_subscribed_to_broadcast) {
+            _channel->attach(this, _broadcast_address);
+        }
     }
 
     ~Communicator() {
         _channel->detach(this, _address);
-        _channel->detach(this, _broadcast_address);
+        if (_subscribed_to_broadcast) {
+            _channel->detach(this, _broadcast_address);
+        }
     }
 
     bool send(const Message * message) {
@@ -61,6 +69,7 @@ private:
     Channel * _channel;
     Address _address;
     Address _broadcast_address;
+    bool _subscribed_to_broadcast;
 };
 
 #endif

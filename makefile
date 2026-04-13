@@ -33,7 +33,7 @@ SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
 CORE_TEST_NAMES := basic v3 gateway_path local_broadcast
-BENCHMARK_NAMES := rtt
+BENCHMARK_NAMES := rtt stress
 
 CORE_TEST_BINS := $(addprefix $(BIN_DIR)/,$(CORE_TEST_NAMES))
 BENCHMARK_BINS := $(addprefix $(BIN_DIR)/,$(BENCHMARK_NAMES))
@@ -44,10 +44,11 @@ MESH_BIN := $(BIN_DIR)/v3
 GATEWAY_PATH_BIN := $(BIN_DIR)/gateway_path
 LOCAL_BROADCAST_BIN := $(BIN_DIR)/local_broadcast
 RTT_BIN := $(BIN_DIR)/rtt
+STRESS_BIN := $(BIN_DIR)/stress
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast measure-rtt measure-rtt-10 logs clean
+.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress measure-rtt measure-rtt-10 logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -94,8 +95,8 @@ select-qemu-cpu: prepare-runtime $(BASIC_BIN) $(RUN_QEMU_TEST)
 	echo "[select-qemu-cpu] nenhuma CPU compativel funcionou; consulte $(LOG_DIR)/cpu-probes" >&2; \
 	exit 1
 
-test: build select-qemu-cpu test-basic test-local-broadcast test-mesh-concurrent
-	@echo "[test] suite completa aprovada."
+test: test-stress
+	@echo "[test] suite de stress aprovada."
 
 test-basic: select-qemu-cpu $(BASIC_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario basic..."
@@ -116,6 +117,11 @@ test-local-broadcast: select-qemu-cpu $(LOCAL_BROADCAST_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario local-broadcast..."
 	@LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(LOCAL_BROADCAST_BIN)" 1 local-broadcast "cenario validado."
 	@echo "[test] cenario local-broadcast aprovado."
+
+test-stress: $(STRESS_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario stress (intra + inter VM, 5 VMs)..."
+	@TIMEOUT_SEC=900 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=max "$(RUN_QEMU_TEST)" "$(STRESS_BIN)" 5 stress "cenario validado."
+	@echo "[test] cenario stress aprovado."
 
 measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
 	@set -e; \

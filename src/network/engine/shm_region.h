@@ -17,8 +17,8 @@ namespace SHM {
     static const uint16_t GATEWAY_WRITER = 0xFFFEu; // diz que quem escreveu foi o gateway
 
 
-    static const unsigned int MAX_COMPONENTS = 16; // nro de componentes registrados na regiao
-    static const unsigned int SLOT_COUNT = 64; // numero de slots do buffer circular
+    static const unsigned int MAX_COMPONENTS = 100; // nro de componentes registrados na regiao
+    static const unsigned int SLOT_COUNT = 100; // numero de slots do buffer circular
     static const unsigned int FRAME_SIZE = sizeof(Ethernet::Frame); 
 
     // flags pensadas pra bitmask. elas podem ser combinadas com um OR

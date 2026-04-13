@@ -23,6 +23,9 @@ public:
     virtual void run() = 0;
     // porta logica fixa usada para identificar o tipo do componente
     virtual Port logical_port() const = 0;
+    // Por padrao componentes escutam o grupo de broadcast logico. Senders puros
+    // podem sobrescrever isso para evitar acumular mensagens que nunca serao lidas.
+    virtual bool subscribe_logical_broadcast() const { return true; }
 
     const std::string& id() const;
 

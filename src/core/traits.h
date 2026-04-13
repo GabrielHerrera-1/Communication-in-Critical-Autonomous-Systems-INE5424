@@ -17,8 +17,8 @@ template <typename T> struct Traits { };
 // eu quero essas configurações de numero de buffers e essa interface
 // NIC --> quantos buffers e qual interface
 template <> struct Traits<NIC<RawSocketEngine>> {
-    static const unsigned int SEND_BUFFERS = 8;
-    static const unsigned int RECEIVE_BUFFERS = 16;
+    static const unsigned int SEND_BUFFERS = 50;
+    static const unsigned int RECEIVE_BUFFERS = 50;
     static constexpr const char* INTERFACE = "eth0";
 };
 
@@ -32,8 +32,8 @@ template <> struct Traits<Protocol<NIC<SharedMemoryEngine>,NIC<RawSocketEngine>>
 
 // NIC de shared memory: mesmos buffers, sem interface de rede
 template <> struct Traits<NIC<SharedMemoryEngine>> {
-    static const unsigned int SEND_BUFFERS = 8;
-    static const unsigned int RECEIVE_BUFFERS = 16;
+    static const unsigned int SEND_BUFFERS = 50;
+    static const unsigned int RECEIVE_BUFFERS = 50;
     static constexpr const char* INTERFACE = nullptr;
 };
 

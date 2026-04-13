@@ -21,6 +21,13 @@ QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
 LOGS_DIR=${LOGS_DIR:-$REPO_ROOT/logs}
 KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-1}
 ARTIFACTS_FILE=${ARTIFACTS_FILE:-}
+SUCCESS_GRACE_SEC=0
+
+case "$SCENARIO_NAME" in
+    stress)
+        SUCCESS_GRACE_SEC=3
+        ;;
+esac
 
 if [ -t 1 ]; then
     COLOR_RED=$(printf '\033[31m')
@@ -133,6 +140,37 @@ success_highlight() {
     grep -F "$SUCCESS_PATTERN" "$logfile" | tail -n 1
 }
 
+last_matching_line() {
+    logfile=$1
+    pattern=$2
+
+    if [ ! -f "$logfile" ]; then
+        return 1
+    fi
+
+    grep -F "$pattern" "$logfile" | tail -n 1
+}
+
+print_execution_summary() {
+    scenario_name=$1
+    vm_label=$2
+    logfile=$3
+
+    case "$scenario_name" in
+        stress)
+            sender_line=$(last_matching_line "$logfile" "SEND_DONE" || true)
+            listener_line=$(last_matching_line "$logfile" "RESUMO" || true)
+
+            if [ -n "$sender_line" ]; then
+                info "[test:$scenario_name] $vm_label dados de envio: $sender_line"
+            fi
+            if [ -n "$listener_line" ]; then
+                info "[test:$scenario_name] $vm_label dados de recepcao: $listener_line"
+            fi
+            ;;
+    esac
+}
+
 if [ ! -x "$BINARY_PATH" ]; then
     error "[test:$SCENARIO_NAME] binario ausente ou sem permissao: $BINARY_PATH"
     exit 1
@@ -217,7 +255,12 @@ while :; do
 
     if [ "$success_count" -eq "$VM_COUNT" ]; then
         completed=1
-        success "[test:$SCENARIO_NAME] criterios de sucesso observados nos logs; encerrando VM(s)"
+        success "[test:$SCENARIO_NAME] criterios de sucesso observados nos logs"
+        if [ "$SUCCESS_GRACE_SEC" -gt 0 ]; then
+            info "[test:$SCENARIO_NAME] aguardando ${SUCCESS_GRACE_SEC}s para consolidar os dados finais"
+            sleep "$SUCCESS_GRACE_SEC"
+        fi
+        success "[test:$SCENARIO_NAME] encerrando VM(s)"
         break
     fi
 
@@ -271,6 +314,7 @@ while [ "$vm_index" -le "$VM_COUNT" ]; do
     else
         success "[test:$SCENARIO_NAME] vm${vm_index} ok"
     fi
+    print_execution_summary "$SCENARIO_NAME" "vm${vm_index}" "$logfile"
     vm_index=$(expr "$vm_index" + 1)
 done
 

@@ -49,7 +49,11 @@ int Vehicle::run_component_process(unsigned int index,
     SharedMemoryEngine::configure(config);
 
     Vehicle_Protocol protocol;
-    Communicator<Vehicle_Protocol> communicator(&protocol, protocol.create_address(c.second));
+    Communicator<Vehicle_Protocol> communicator(
+        &protocol,
+        protocol.create_address(c.second),
+        c.first->subscribe_logical_broadcast()
+    );
     c.first->set_communicator(&communicator);
     c.first->set_port(c.second);
 
