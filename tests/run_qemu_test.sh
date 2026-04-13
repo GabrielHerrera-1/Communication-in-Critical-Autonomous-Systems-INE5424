@@ -102,19 +102,19 @@ log_matches_expectations() {
         return 1
     fi
 
-    if ! grep -Fq "$SUCCESS_PATTERN" "$logfile"; then
+    if ! grep -aFq "$SUCCESS_PATTERN" "$logfile"; then
         return 1
     fi
 
     if [ -n "$EXPECTED_SEND" ]; then
-        send_count=$(grep -c "enviou:" "$logfile" || true)
+        send_count=$(grep -ac "enviou:" "$logfile" || true)
         if [ "$send_count" != "$EXPECTED_SEND" ]; then
             return 1
         fi
     fi
 
     if [ -n "$EXPECTED_RECEIVE" ]; then
-        receive_count=$(grep -c "recebeu:" "$logfile" || true)
+        receive_count=$(grep -ac "recebeu:" "$logfile" || true)
         if [ "$receive_count" != "$EXPECTED_RECEIVE" ]; then
             return 1
         fi
@@ -130,7 +130,7 @@ success_highlight() {
         return 1
     fi
 
-    grep -F "$SUCCESS_PATTERN" "$logfile" | tail -n 1
+    grep -aF "$SUCCESS_PATTERN" "$logfile" | tail -n 1
 }
 
 if [ ! -x "$BINARY_PATH" ]; then

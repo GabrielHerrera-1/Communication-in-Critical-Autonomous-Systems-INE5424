@@ -7,6 +7,7 @@
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <sys/shm.h>
+#include <signal.h>
 #include <unistd.h>
 
 namespace {
@@ -99,11 +100,14 @@ SharedMemoryEngine::Context SharedMemoryEngine::create(
     region->components[SHM::GATEWAY_SLOT].port = 0;
     region->components[SHM::GATEWAY_SLOT].slot = SHM::GATEWAY_SLOT;
     region->components[SHM::GATEWAY_SLOT].active = 0;
+    region->components[SHM::GATEWAY_SLOT].receiver_ready = 0;
+    region->gateway_pid = 0;
 
     for (unsigned int i = 1; i < registered_slots; ++i) {
         region->components[i].port = ports[i - 1];
         region->components[i].slot = static_cast<uint16_t>(i);
         region->components[i].active = 0;
+        region->components[i].receiver_ready = 0;
     }
 
     // inicializa seq logica do ring. cada escrita recebe um numero crescente
@@ -261,8 +265,8 @@ bool SharedMemoryEngine::wait_until_all_processes_ready() {
 
             // A nova topologia deixa o gateway criar a SHM e forkar os
             // componentes. Para o bootstrap ficar deterministico, so soltamos
-            // o run() quando todos chegaram aqui e cada receiver local ja
-            // publicou que sua recepcao assincrona foi armada de verdade.
+            // o run() quando todos chegaram aqui e cada processo publicou que
+            // seu endpoint local ja pode receber por dispatch explicito.
             for (unsigned int i = 0; i < region->component_count; ++i) {
                 if (!signal_sem(SEM_BOOTSTRAP_RELEASE)) {
                     shmdt(region);
@@ -325,10 +329,11 @@ void SharedMemoryEngine::engine_init(const char *) {
 
     if (_gateway) {
         _region->gateway_active = 1;
-        _region->components[SHM::GATEWAY_SLOT].receiver_ready = 0;
+        _region->gateway_pid = static_cast<int32_t>(getpid());
+        _region->components[SHM::GATEWAY_SLOT].receiver_ready = 1;
     } else if (_slot < _region->component_count) {
         _region->components[_slot].active = 1;
-        _region->components[_slot].receiver_ready = 0;
+        _region->components[_slot].receiver_ready = 1;
     }
 
     signal_semaphore(SEM_RING_MUTEX);
@@ -366,18 +371,11 @@ int SharedMemoryEngine::engine_receive(void * frame, unsigned int size) {
 }
 
 void SharedMemoryEngine::engine_close() {
-    // para a thread de recepção
-    _running_receiver = false;
-    // acorda a thread se estiver bloqueada no P() do semaforo pendente
-    if (_context.semid >= 0) {
-        signal_semaphore(pending_semaphore());
-    }
-    if (_worker.joinable()) _worker.join();
-
     if (_region && wait_semaphore(SEM_RING_MUTEX)) {
         if (_gateway) {
             _region->gateway_active = 0;
             _region->components[SHM::GATEWAY_SLOT].receiver_ready = 0;
+            _region->gateway_pid = 0;
         } else if (_slot < _region->component_count) {
             _region->components[_slot].active = 0;
             _region->components[_slot].receiver_ready = 0;
@@ -385,60 +383,6 @@ void SharedMemoryEngine::engine_close() {
         signal_semaphore(SEM_RING_MUTEX);
     }
     detach_region();
-}
-
-void SharedMemoryEngine::start_receiving() {
-    if (!_region) return;
-    _running_receiver = true;
-
-    _worker = std::thread([this]() {
-        unsigned char frame[SHM::FRAME_SIZE];
-
-        if (!set_receiver_ready(true)) {
-            _running_receiver = false;
-            return;
-        }
-
-        while (_running_receiver) {
-            // bloqueante: espera V() no semaforo pendente (o signal)
-            int bytes = engine_receive(frame, sizeof(frame));
-            if (bytes <= 0) {
-                if (!_running_receiver) break;
-                continue;
-            }
-
-            if (_on_receive) {
-                _on_receive(reinterpret_cast<const unsigned char*>(frame), static_cast<size_t>(bytes));
-            }
-
-            // drena todos os frames pendentes (non-blocking)
-            engine_set_nonblocking(true);
-            while (_running_receiver) {
-                bytes = engine_receive(frame, sizeof(frame));
-                if (bytes <= 0) break;
-                if (_on_receive) {
-                    _on_receive(reinterpret_cast<const unsigned char*>(frame), static_cast<size_t>(bytes));
-                }
-            }
-            engine_set_nonblocking(false);
-        }
-    });
-}
-
-bool SharedMemoryEngine::set_receiver_ready(bool ready) {
-    if (!_region) {
-        return false;
-    }
-
-    if (!wait_semaphore(SEM_RING_MUTEX)) {
-        return false;
-    }
-
-    if (_slot < _region->component_count) {
-        _region->components[_slot].receiver_ready = ready ? 1 : 0;
-    }
-
-    return signal_semaphore(SEM_RING_MUTEX);
 }
 
 void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
@@ -452,6 +396,10 @@ void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
 
 void SharedMemoryEngine::engine_set_nonblocking(bool enabled) {
     _nonblocking = enabled;
+}
+
+int SharedMemoryEngine::engine_wait_descriptor() const {
+    return -1;
 }
 
 bool SharedMemoryEngine::engine_should_drop_frame(const Ethernet::Frame &,
@@ -571,6 +519,17 @@ bool SharedMemoryEngine::signal_semaphore(int sem_index) {
     return true;
 }
 
+void SharedMemoryEngine::notify_gateway() const {
+    if (!_region || !_region->gateway_active || _region->gateway_pid <= 0) {
+        return;
+    }
+
+    // O signal aqui serve apenas para acordar o loop do gateway, que pode
+    // estar bloqueado em select() esperando a NIC de rede. A pilha sobe em
+    // contexto normal, quando o gateway volta do select() e drena a SHM.
+    kill(static_cast<pid_t>(_region->gateway_pid), SIGUSR1);
+}
+
 int SharedMemoryEngine::write_slot(
     const void * frame,
     unsigned int size,
@@ -602,6 +561,9 @@ int SharedMemoryEngine::write_slot(
 
     if (is_gateway_active() && slot.remaining_readers > 0) {
         signal_semaphore(SEM_GATEWAY_PENDING);
+        if (!_gateway && (flags & SHM::DELIVER_TO_GATEWAY)) {
+            notify_gateway();
+        }
     }
 
     for (unsigned int i = 0; i < _region->component_count; ++i) {

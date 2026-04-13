@@ -15,6 +15,7 @@
 #pragma once
 
 #include <semaphore.h>
+#include <cerrno>
 
 class Semaphore {
     public:
@@ -26,6 +27,15 @@ class Semaphore {
         }
         void p() { // decrementa o contador
             sem_wait(&_sem);
+        }
+        bool try_p() {
+            while (sem_trywait(&_sem) < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                return false;
+            }
+            return true;
         }
         void v() { // incrementa o contador
             sem_post(&_sem);

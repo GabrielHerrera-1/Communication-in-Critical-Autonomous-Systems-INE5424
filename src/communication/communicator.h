@@ -33,11 +33,34 @@ public:
                                message->data(), message->size()) > 0);
     }
 
-    bool receive(Message * message) {
-        Buffer * buf = Observer::updated(); // block until a notification is triggered
+    bool try_receive(Message * message) {
+        Buffer * buf = nullptr;
+        if (!Observer::try_updated(&buf)) {
+            _channel->dispatch(false);
+            if (!Observer::try_updated(&buf)) {
+                return false;
+            }
+        }
 
-        if (!buf) {
-            //print("ERROR: No aviable buffer");
+        return consume_buffer(buf, message);
+    }
+
+    bool receive(Message * message) {
+        Buffer * buf = nullptr;
+        while (!Observer::try_updated(&buf)) {
+            _channel->dispatch(true);
+        }
+
+        return consume_buffer(buf, message);
+    }
+
+private:
+    void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) {
+        Observer::update(c, buf);
+    }
+
+    bool consume_buffer(Buffer * buf, Message * message) {
+        if (!buf || !message) {
             return false;
         }
 
@@ -46,15 +69,7 @@ public:
         message->size(size);
         message->origin(typename Message::Origin(from.paddr(), from.port()));
 
-        if (size <= 0)
-            return false;
-        
-        return true;
-    }
-
-private:
-    void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) {
-        Observer::update(c, buf);
+        return size > 0;
     }
 
 private:

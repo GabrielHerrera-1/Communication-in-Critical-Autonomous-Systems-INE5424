@@ -9,7 +9,9 @@
 #include "../core/buffer.h"
 #include "../core/traits.h"
 #include <cstring>
+#include <cerrno>
 #include <limits>
+#include <sys/select.h>
 #include <type_traits>
 
 // Communication Protocol
@@ -184,6 +186,16 @@ public:
         return Address(_address._paddr, port);
     }
 
+    bool dispatch(bool block = true, int timeout_ms = 1000) {
+        if constexpr (!std::is_void_v<RawSocketNIC>) {
+            if (_socket_nic) {
+                return dispatch_gateway(block, timeout_ms);
+            }
+        }
+
+        return _shm_nic.dispatch_all(block);
+    }
+
     static void attach(Observer *obs, Address address) {
         _observed.attach(obs, address.port());
     };
@@ -268,6 +280,38 @@ private:
             memcpy(packet->template data<unsigned char>(), data, size);
 
         return nic->send(buf);
+    }
+
+    bool dispatch_gateway(bool block, int timeout_ms) {
+        bool handled = false;
+
+        handled = _shm_nic.dispatch_all(false) || handled;
+        handled = _socket_nic->dispatch_all(false) || handled;
+        if (handled || !block) {
+            return handled;
+        }
+
+        const int fd = _socket_nic->wait_descriptor();
+        if (fd < 0) {
+            return false;
+        }
+
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(fd, &readfds);
+
+        timeval timeout = {};
+        timeout.tv_sec = timeout_ms / 1000;
+        timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+        int rc = select(fd + 1, &readfds, nullptr, nullptr, &timeout);
+        if (rc < 0 && errno != EINTR) {
+            return false;
+        }
+
+        handled = _shm_nic.dispatch_all(false) || handled;
+        handled = _socket_nic->dispatch_all(false) || handled;
+        return handled;
     }
 
 

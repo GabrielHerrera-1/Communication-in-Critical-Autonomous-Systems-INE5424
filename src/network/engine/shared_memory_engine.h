@@ -2,9 +2,6 @@
 #define SHARED_MEMORY_ENGINE_H
 
 #include <cstdint>
-#include <functional>
-#include <thread>
-#include <atomic>
 
 #include "shm_region.h"
 #include "../ethernet.h"
@@ -61,17 +58,12 @@ public:
     void engine_close();
     void engine_get_address(unsigned char * mac);
     void engine_set_nonblocking(bool enabled);
-
-    // inicia recepção: thread bloqueia no semaforo P(), quando V() chega
-    // drena tudo e chama on_receive pra cada frame
-    void start_receiving();
+    // a SHM continua acordando leitores via semaforo, mas o dispatch agora é
+    // dirigido pela NIC/Communicator/Gateway, sem worker escondida na engine.
+    int engine_wait_descriptor() const;
     // na SHM o self-drop é decidido pelo writer_slot, não pelo MAC
     bool engine_should_drop_frame(const Ethernet::Frame & frame,
                                   const Ethernet::Address & local_address) const;
-    // callback chamado pela engine quando um frame chega.
-    // a NIC registra esse callback no construtor dela
-    typedef std::function<void(const unsigned char*, size_t)> ReceiveHandler;
-    void set_receive_handler(ReceiveHandler handler) { _on_receive = handler; }
 
 private:
 
@@ -100,7 +92,6 @@ private:
     // e depois fazer shmdt pra desanexar. esses metodos fazem isso
     bool attach_region();
     void detach_region();
-    bool set_receiver_ready(bool ready);
 
     // responde em qual semaforo essa instancia deve esperar por mensagens. evita codigo desnecessario dps
     int pending_semaphore() const;
@@ -132,6 +123,9 @@ private:
     bool try_wait_semaphore(int sem_index);
     // faz v() no semaforo indicado
     bool signal_semaphore(int sem_index);
+    // acorda o loop do gateway sem empurrar a pilha inteira para dentro de um
+    // signal handler. O sinal só interrompe o select() do gateway.
+    void notify_gateway() const;
 
     // espera slot livre, trava mutex do ring, pega seq atual, escolhe slot fisico, escreve o frame, preenche writer_slot e preenche flags
     int write_slot(const void * frame,
@@ -153,10 +147,6 @@ private:
     bool _gateway;
     bool _nonblocking;
     uint64_t _next_seq;
-
-    ReceiveHandler _on_receive;
-    std::thread _worker;
-    std::atomic<bool> _running_receiver{false};
 };
 
 #endif

@@ -22,6 +22,10 @@ public:
     static constexpr Port TEST_MESH = 0xF001;
     static constexpr Port TEST_GATEWAY_PATH = 0xF002;
     static constexpr Port TEST_RTT = 0xF003;
+    static constexpr Port TEST_LOAD_STRESS = 0xF004;
+    static constexpr Port TEST_BURST_STRESS = 0xF005;
+    static constexpr Port TEST_LOAD_STRESS_HEAVY = TEST_BURST_STRESS; // compatibilidade com o nome antigo
+    static constexpr Port TEST_NETWORK_LOSS_STRESS = 0xF006;
     static constexpr Port TEST_LOCAL_BROADCAST_BASIC_SENDER = 0xF101;
     static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_A = 0xF102;
     static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_B = 0xF103;

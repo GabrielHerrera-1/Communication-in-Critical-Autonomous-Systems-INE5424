@@ -18,7 +18,13 @@ namespace SHM {
 
 
     static const unsigned int MAX_COMPONENTS = 16; // nro de componentes registrados na regiao
-    static const unsigned int SLOT_COUNT = 64; // numero de slots do buffer circular
+    // O barramento local precisa aguentar rajadas enquanto o componente ainda
+    // esta terminando sua fase de envio e o gateway segue injetando frames
+    // vindos da rede. Com 1 componente por VM, a carga pesada consegue
+    // acumular 16 mensagens locais + 64 remotas antes de o consumidor drenar,
+    // entao 64 slots viram um gargalo real. Mantemos um ring maior para
+    // absorver essas rajadas sem bloquear o gateway cedo demais.
+    static const unsigned int SLOT_COUNT = 256; // numero de slots do buffer circular
     static const unsigned int FRAME_SIZE = sizeof(Ethernet::Frame); 
 
     // flags pensadas pra bitmask. elas podem ser combinadas com um OR
@@ -58,6 +64,7 @@ namespace SHM {
         uint32_t magic;
         uint16_t component_count;
         uint8_t gateway_active;
+        int32_t gateway_pid;
         uint16_t bootstrap_ready_count;
         uint8_t bootstrap_released;
 

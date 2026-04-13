@@ -8,13 +8,13 @@
 #include <mutex>
 #include <cstring>
 #include <cstdio>
-#include <atomic>
 #include <stack>
 
 // Network
 template <typename Engine>
 // NIC herda de ethernet, conditionally data observed e engine
-// sem thread: a Engine chama on_receive via callback quando um frame chega (signal-driven)
+// o dispatch agora é explícito: quem estiver no controle do fluxo (gateway ou
+// communicator) chama dispatch_once()/dispatch_all() em contexto normal.
 class NIC : public Ethernet, public Conditionally_Data_Observed<Buffer<Ethernet::Frame>, Ethernet::Protocol>, private Engine
 {
 public:
@@ -45,39 +45,6 @@ public:
         for (unsigned int i = 0; i < BUFFER_SIZE; i++) {
             _free_list.push(i);
         }
-
-        // registra callback na Engine: quando chegar um frame,
-        // a engine chama essa funcao que aloca buffer, valida e notifica observers
-        Engine::set_receive_handler([this](const unsigned char* data, size_t size) {
-            Buffer<Ethernet::Frame>* buf = alloc_buf();
-            if (!buf) return; // pool cheio, dropa
-
-            if (size > sizeof(Ethernet::Frame)) size = sizeof(Ethernet::Frame);
-            std::memcpy(buf->data(), data, size);
-
-            Ethernet::Frame* frame = buf->data();
-
-            // descarta frames incompletos
-            if (size < Ethernet::HEADER_SIZE) {
-                free(buf);
-                return;
-            }
-
-            // o criterio de auto-drop depende da engine usada
-            if (Engine::engine_should_drop_frame(*frame, _address)) {
-                free(buf);
-                return;
-            }
-
-            Protocol_Number prot = frame->type();
-            _statistics.rx_packets++;
-            _statistics.rx_bytes += size;
-            buf->size(size - Ethernet::HEADER_SIZE);
-
-            // propaga pro observer (Protocol)
-            if (!Observed::notify(prot, buf))
-                free(buf);
-        });
     }
 
     ~NIC() {
@@ -140,18 +107,75 @@ public:
         return (buf >= &_buffer[0] && buf < &_buffer[BUFFER_SIZE]);
     };
 
-    // no primeiro attach, inicia a recepção da engine (SIGIO pra raw socket, semaforo pra SHM)
     void attach(Observer *obs, Protocol_Number prot) {
         Observed::attach(obs, prot);
-        bool expected = false;
-        if (_receive_started.compare_exchange_strong(expected, true)) {
-            Engine::start_receiving();
-        }
     };
 
     void detach(Observer *obs, Protocol_Number prot) {
         Observed::detach(obs, prot);
     };
+
+    void set_nonblocking(bool enabled) {
+        Engine::engine_set_nonblocking(enabled);
+    }
+
+    int wait_descriptor() const {
+        return Engine::engine_wait_descriptor();
+    }
+
+    bool dispatch_once(bool block) {
+        Buffer<Ethernet::Frame> *buf = alloc_buf();
+        if (!buf) {
+            return false;
+        }
+
+        Engine::engine_set_nonblocking(!block);
+        int bytes = Engine::engine_receive(buf->data(), sizeof(Ethernet::Frame));
+        if (bytes <= 0) {
+            free(buf);
+            return false;
+        }
+
+        if (static_cast<unsigned int>(bytes) > sizeof(Ethernet::Frame)) {
+            bytes = sizeof(Ethernet::Frame);
+        }
+
+        Ethernet::Frame *frame = buf->data();
+        if (static_cast<unsigned int>(bytes) < Ethernet::HEADER_SIZE) {
+            free(buf);
+            return false;
+        }
+
+        if (Engine::engine_should_drop_frame(*frame, _address)) {
+            free(buf);
+            return false;
+        }
+
+        Protocol_Number prot = frame->type();
+        _statistics.rx_packets++;
+        _statistics.rx_bytes += bytes;
+        buf->size(static_cast<unsigned int>(bytes) - Ethernet::HEADER_SIZE);
+
+        if (!Observed::notify(prot, buf)) {
+            free(buf);
+        }
+
+        return true;
+    }
+
+    bool dispatch_all(bool block_first) {
+        bool handled = false;
+
+        if (block_first) {
+            handled = dispatch_once(true);
+        }
+
+        while (dispatch_once(false)) {
+            handled = true;
+        }
+
+        return handled;
+    }
 
 private:
     Buffer<Ethernet::Frame> *alloc_buf() {
@@ -163,7 +187,6 @@ private:
     }
 
     Address _address;
-    std::atomic<bool> _receive_started{false};
     std::mutex _buf_mtx;
     Statistics _statistics;
     Buffer<Ethernet::Frame> _buffer[BUFFER_SIZE];

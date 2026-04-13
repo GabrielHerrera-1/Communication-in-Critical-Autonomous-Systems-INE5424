@@ -10,8 +10,6 @@
 #include <arpa/inet.h>
 #include <cstdio>
 #include <fcntl.h>
-#include <signal.h>
-#include <sys/syscall.h>
 
 void RawSocketEngine::engine_init(const char* iface) {
     _sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
@@ -53,10 +51,19 @@ int RawSocketEngine::engine_send(const void* frame, unsigned int size) {
                   (struct sockaddr*)&dest, sizeof(dest));
 }
 
+int RawSocketEngine::engine_receive(void * frame, unsigned int size) {
+    if (_sockfd < 0 || !frame || size == 0) {
+        return -1;
+    }
+
+    return static_cast<int>(recv(_sockfd, frame, size, 0));
+}
+
 void RawSocketEngine::engine_close() {
-    _running = false;
-    if (_sockfd >= 0) { close(_sockfd); _sockfd = -1; }
-    if (_worker.joinable()) _worker.join();
+    if (_sockfd >= 0) {
+        close(_sockfd);
+        _sockfd = -1;
+    }
 }
 
 void RawSocketEngine::engine_get_address(unsigned char* mac) {
@@ -79,61 +86,30 @@ void RawSocketEngine::engine_get_address(unsigned char* mac) {
     memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
 }
 
-void RawSocketEngine::start_receiving() {
-    if (_sockfd < 0) return;
-    _running = true;
+void RawSocketEngine::engine_set_nonblocking(bool enabled) {
+    if (_sockfd < 0) {
+        return;
+    }
 
-    // seta socket como non-blocking + O_ASYNC (habilita SIGIO)
     int fl = fcntl(_sockfd, F_GETFL, 0);
-    fcntl(_sockfd, F_SETFL, fl | O_NONBLOCK | O_ASYNC);
+    if (fl < 0) {
+        perror("[Engine] fcntl(F_GETFL)");
+        return;
+    }
 
-    _worker = std::thread([this]() {
-        // registra essa thread pra receber SIGIO do socket
-        struct f_owner_ex owner;
-        owner.type = F_OWNER_TID;
-        owner.pid = static_cast<pid_t>(syscall(SYS_gettid));
-        fcntl(_sockfd, F_SETOWN_EX, &owner);
+    if (enabled) {
+        fl |= O_NONBLOCK;
+    } else {
+        fl &= ~O_NONBLOCK;
+    }
 
-        // ignora SIGIO como ação default (vamos usar sigtimedwait)
-        struct sigaction sa{};
-        sa.sa_handler = SIG_IGN;
-        sigemptyset(&sa.sa_mask);
-        sigaction(SIGIO, &sa, nullptr);
+    if (fcntl(_sockfd, F_SETFL, fl) < 0) {
+        perror("[Engine] fcntl(F_SETFL)");
+    }
+}
 
-        // bloqueia SIGIO pra poder esperar com sigtimedwait
-        sigset_t mask;
-        sigemptyset(&mask);
-        sigaddset(&mask, SIGIO);
-        pthread_sigmask(SIG_BLOCK, &mask, nullptr);
-
-        unsigned char buf[1514];
-
-        while (_running) {
-            // bloqueia esperando SIGIO (signal de que chegou dado no socket)
-            struct timespec ts;
-            ts.tv_sec = 1;
-            ts.tv_nsec = 0;
-
-            siginfo_t si{};
-            int sig = sigtimedwait(&mask, &si, &ts);
-            if (sig < 0) {
-                if (errno == EAGAIN) continue; // timeout, checa _running
-                break;
-            }
-
-            // SIGIO recebido: drena todos os pacotes pendentes (non-blocking)
-            while (_running) {
-                ssize_t n = recv(_sockfd, buf, sizeof(buf), 0);
-                if (n < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-                    break;
-                }
-                if (n > 0 && _on_receive) {
-                    _on_receive(buf, static_cast<size_t>(n));
-                }
-            }
-        }
-    });
+int RawSocketEngine::engine_wait_descriptor() const {
+    return _sockfd;
 }
 
 // coloquei aqui porque senao dropa tudo na nic quando é ipc

@@ -1,5 +1,13 @@
 #include "gateway.h"
 
+#include <csignal>
+
+namespace {
+
+void gateway_wakeup_handler(int) {}
+
+}
+
 Gateway::Gateway()
     : Component("gateway"),
       _context{-1, -1} {}
@@ -28,6 +36,16 @@ void Gateway::run() {
         return;
     }
 
+    // O gateway espera a NIC de rede via select() e precisa ser acordado
+    // quando um componente publica algo para ele na SHM. O handler nao sobe a
+    // pilha; ele so interrompe o select() para o loop drenar o que estiver
+    // pendente em contexto normal.
+    struct sigaction sa{};
+    sa.sa_handler = gateway_wakeup_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGUSR1, &sa, nullptr);
+
     SharedMemoryEngine::Configuration gateway_config = {};
     gateway_config.context = _context;
     gateway_config.slot = SHM::GATEWAY_SLOT;
@@ -35,6 +53,14 @@ void Gateway::run() {
     SharedMemoryEngine::configure(gateway_config);
 
     _protocol = std::make_unique<Vehicle_Protocol>();
+}
+
+bool Gateway::dispatch_events(bool block, int timeout_ms) {
+    if (!_protocol) {
+        return false;
+    }
+
+    return _protocol->dispatch(block, timeout_ms);
 }
 
 void Gateway::stop() {

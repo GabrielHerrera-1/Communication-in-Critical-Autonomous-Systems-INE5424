@@ -19,6 +19,7 @@ public:
     void initialize() override;
     void run() override;
     Port logical_port() const override;
+    bool dispatch_events(bool block = true, int timeout_ms = 1000);
     void stop();
 
 private:

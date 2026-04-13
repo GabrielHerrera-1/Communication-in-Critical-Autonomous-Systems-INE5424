@@ -124,12 +124,22 @@ int Vehicle::run_gateway_process() {
         return 1;
     }
 
-    for (pid_t pid : pids) {
-        int status;
-        waitpid(pid, &status, 0);
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-            failed = true;
-            std::cerr << "[Vehicle] componente terminou com falha." << std::endl;
+    unsigned int remaining_children = static_cast<unsigned int>(pids.size());
+    while (remaining_children > 0) {
+        _gateway.dispatch_events(true, 1000);
+
+        while (true) {
+            int status = 0;
+            pid_t pid = waitpid(-1, &status, WNOHANG);
+            if (pid <= 0) {
+                break;
+            }
+
+            --remaining_children;
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                failed = true;
+                std::cerr << "[Vehicle] componente terminou com falha." << std::endl;
+            }
         }
     }
 

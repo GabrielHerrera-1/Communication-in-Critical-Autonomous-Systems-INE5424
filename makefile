@@ -32,8 +32,8 @@ RUN_QEMU_TEST := ./tests/run_qemu_test.sh
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
-CORE_TEST_NAMES := basic v3 gateway_path local_broadcast
-BENCHMARK_NAMES := rtt
+CORE_TEST_NAMES := basic v3 gateway_path local_broadcast load_stress burst_stress
+BENCHMARK_NAMES := rtt network_loss_stress
 
 CORE_TEST_BINS := $(addprefix $(BIN_DIR)/,$(CORE_TEST_NAMES))
 BENCHMARK_BINS := $(addprefix $(BIN_DIR)/,$(BENCHMARK_NAMES))
@@ -43,11 +43,14 @@ BASIC_BIN := $(BIN_DIR)/basic
 MESH_BIN := $(BIN_DIR)/v3
 GATEWAY_PATH_BIN := $(BIN_DIR)/gateway_path
 LOCAL_BROADCAST_BIN := $(BIN_DIR)/local_broadcast
+LOAD_STRESS_BIN := $(BIN_DIR)/load_stress
+BURST_STRESS_BIN := $(BIN_DIR)/burst_stress
 RTT_BIN := $(BIN_DIR)/rtt
+NETWORK_LOSS_STRESS_BIN := $(BIN_DIR)/network_loss_stress
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast measure-rtt measure-rtt-10 logs clean
+.PHONY: all build prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-load-stress test-burst-stress test-load-stress-heavy measure-rtt measure-rtt-10 measure-network-loss logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -117,6 +120,19 @@ test-local-broadcast: select-qemu-cpu $(LOCAL_BROADCAST_BIN) $(RUN_QEMU_TEST)
 	@LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(LOCAL_BROADCAST_BIN)" 1 local-broadcast "cenario validado."
 	@echo "[test] cenario local-broadcast aprovado."
 
+test-load-stress: select-qemu-cpu $(LOAD_STRESS_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario load-stress..."
+	@TIMEOUT_SEC=240 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(LOAD_STRESS_BIN)" 5 load-stress "validado com 80 envios e 320 recebimentos."
+	@echo "[test] cenario load-stress aprovado."
+
+test-burst-stress: select-qemu-cpu $(BURST_STRESS_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario burst-stress..."
+	@TIMEOUT_SEC=360 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(BURST_STRESS_BIN)" 5 burst-stress "validado com 256 envios e 1024 recebimentos."
+	@echo "[test] cenario burst-stress aprovado."
+
+test-load-stress-heavy: test-burst-stress
+	@true
+
 measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
 	@set -e; \
 	artifacts_file=$$(mktemp /tmp/so2-rtt-artifacts.XXXXXX); \
@@ -128,6 +144,18 @@ measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_r
 
 measure-rtt-10: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py $(TEST_DIR)/measure_rtt_batch.py
 	@LOGS_DIR="$(abspath $(LOG_DIR))" "$(PYTHON)" "$(TEST_DIR)/measure_rtt_batch.py" "$(RUN_QEMU_TEST)" "$$(cat "$(QEMU_CPU_FILE)")" 10 "$(RTT_BIN)"
+
+measure-network-loss: select-qemu-cpu $(NETWORK_LOSS_STRESS_BIN) $(RUN_QEMU_TEST)
+	@set -e; \
+	artifacts_file=$$(mktemp /tmp/so2-network-loss.XXXXXX); \
+	KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file TIMEOUT_SEC=240 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(NETWORK_LOSS_STRESS_BIN)" 5 network-loss-stress "medicao concluida."; \
+	artifacts_root=$$(cat $$artifacts_file); \
+	echo "[measure-network-loss] resumo por VM:"; \
+	for logfile in "$$artifacts_root"/logs/vm*.log; do \
+		grep -aF "medicao concluida." "$$logfile" | tail -n 1; \
+	done; \
+	echo "[measure-network-loss] logs preservados em $$artifacts_root/logs"; \
+	rm -f $$artifacts_file
 
 logs:
 	@if [ ! -d "$(LOG_DIR)/latest" ]; then \
