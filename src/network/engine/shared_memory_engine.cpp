@@ -1,4 +1,5 @@
 #include "shared_memory_engine.h"
+#include "../../core/rt_priority.h"
 
 #include <cerrno>
 #include <cstdio>
@@ -392,6 +393,8 @@ void SharedMemoryEngine::start_receiving() {
     _running_receiver = true;
 
     _worker = std::thread([this]() {
+        RT_Priority::set_service_thread_priority("shm-recv");
+
         unsigned char frame[SHM::FRAME_SIZE];
 
         if (!set_receiver_ready(true)) {

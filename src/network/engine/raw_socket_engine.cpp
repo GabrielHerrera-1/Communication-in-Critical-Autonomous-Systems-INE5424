@@ -1,4 +1,5 @@
 #include "raw_socket_engine.h"
+#include "../../core/rt_priority.h"
 
 #include <sys/socket.h>
 #include <linux/if_packet.h>
@@ -88,6 +89,8 @@ void RawSocketEngine::start_receiving() {
     fcntl(_sockfd, F_SETFL, fl | O_NONBLOCK | O_ASYNC);
 
     _worker = std::thread([this]() {
+        RT_Priority::set_service_thread_priority("raw-socket-recv");
+
         // registra essa thread pra receber SIGIO do socket
         struct f_owner_ex owner;
         owner.type = F_OWNER_TID;

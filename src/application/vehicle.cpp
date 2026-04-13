@@ -1,4 +1,5 @@
 #include "vehicle.h"
+#include "../core/rt_priority.h"
 #include <csignal>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -42,6 +43,8 @@ int Vehicle::run_component_process(unsigned int index,
                                    const SharedMemoryEngine::Context & context) {
     auto c = _components[index];
 
+    RT_Priority::set_main_thread_priority(c.first->id().c_str());
+
     SharedMemoryEngine::Configuration config = {};
     config.context = context;
     config.slot = static_cast<uint16_t>(index + 1);
@@ -76,6 +79,8 @@ pid_t Vehicle::spawn_component_process(unsigned int index,
 }
 
 int Vehicle::run_gateway_process() {
+    RT_Priority::set_main_thread_priority("gateway-main");
+
     std::vector<pid_t> pids;
     bool failed = false;
     bool spawn_failed = false;

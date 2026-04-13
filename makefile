@@ -132,9 +132,9 @@ test-local-broadcast: select-qemu-cpu $(LOCAL_BROADCAST_BIN) $(RUN_QEMU_TEST)
 	@LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(LOCAL_BROADCAST_BIN)" 1 local-broadcast "cenario validado."
 	@echo "[test] cenario local-broadcast aprovado."
 
-test-stress: $(STRESS_BIN) $(RUN_QEMU_TEST)
+test-stress: select-qemu-cpu $(STRESS_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario stress (intra + inter VM, 5 VMs)..."
-	@TIMEOUT_SEC=900 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=max "$(RUN_QEMU_TEST)" "$(STRESS_BIN)" 5 stress "cenario validado."
+	@TIMEOUT_SEC=900 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(STRESS_BIN)" 5 stress "cenario validado."
 	@echo "[test] cenario stress aprovado."
 
 measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
