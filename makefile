@@ -14,7 +14,7 @@ QEMU ?= qemu-system-riscv64
 QEMU_MATCH ?= $(notdir $(QEMU))
 QEMU_CPU ?= auto
 QEMU_CPU_FILE := $(BUILD_DIR)/.qemu_cpu
-QEMU_CPU_CANDIDATES ?= rv64 sifive-u54 max
+QEMU_CPU_CANDIDATES ?= default max rv64 sifive-u54
 
 PYTHON ?= python3
 PKILL ?= pkill

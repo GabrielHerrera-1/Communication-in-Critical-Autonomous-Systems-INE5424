@@ -16,7 +16,7 @@ SUCCESS_PATTERN=$4
 EXPECTED_SEND=${5:-}
 EXPECTED_RECEIVE=${6:-}
 TIMEOUT_SEC=${TIMEOUT_SEC:-180}
-QEMU_CPU=${QEMU_CPU:-max}
+QEMU_CPU=${QEMU_CPU:-default}
 QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
 LOGS_DIR=${LOGS_DIR:-$REPO_ROOT/logs}
 KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-1}
@@ -109,19 +109,19 @@ log_matches_expectations() {
         return 1
     fi
 
-    if ! grep -Fq "$SUCCESS_PATTERN" "$logfile"; then
+    if ! grep -aFq "$SUCCESS_PATTERN" "$logfile"; then
         return 1
     fi
 
     if [ -n "$EXPECTED_SEND" ]; then
-        send_count=$(grep -c "enviou:" "$logfile" || true)
+        send_count=$(grep -ac "enviou:" "$logfile" || true)
         if [ "$send_count" != "$EXPECTED_SEND" ]; then
             return 1
         fi
     fi
 
     if [ -n "$EXPECTED_RECEIVE" ]; then
-        receive_count=$(grep -c "recebeu:" "$logfile" || true)
+        receive_count=$(grep -ac "recebeu:" "$logfile" || true)
         if [ "$receive_count" != "$EXPECTED_RECEIVE" ]; then
             return 1
         fi
@@ -137,7 +137,7 @@ success_highlight() {
         return 1
     fi
 
-    grep -F "$SUCCESS_PATTERN" "$logfile" | tail -n 1
+    grep -aF "$SUCCESS_PATTERN" "$logfile" | tail -n 1
 }
 
 last_matching_line() {
@@ -148,7 +148,14 @@ last_matching_line() {
         return 1
     fi
 
-    grep -F "$pattern" "$logfile" | tail -n 1
+    grep -aF "$pattern" "$logfile" | tail -n 1
+}
+
+extract_kv_field() {
+    line=$1
+    key=$2
+
+    printf '%s\n' "$line" | sed -n "s/.*[[:space:]]$key=\\([^[:space:]]*\\).*/\\1/p"
 }
 
 print_execution_summary() {
@@ -162,10 +169,31 @@ print_execution_summary() {
             listener_line=$(last_matching_line "$logfile" "RESUMO" || true)
 
             if [ -n "$sender_line" ]; then
-                info "[test:$scenario_name] $vm_label dados de envio: $sender_line"
+                send_drops=$(extract_kv_field "$sender_line" "local_send_drops")
+                done_drops=$(extract_kv_field "$sender_line" "local_done_drops")
+
+                if [ -n "$send_drops" ] || [ -n "$done_drops" ]; then
+                    info "[test:$scenario_name] $vm_label envio: local_send_drops=${send_drops:-?} local_done_drops=${done_drops:-?}"
+                else
+                    info "[test:$scenario_name] $vm_label dados de envio: $sender_line"
+                fi
             fi
             if [ -n "$listener_line" ]; then
-                info "[test:$scenario_name] $vm_label dados de recepcao: $listener_line"
+                intra_lost=$(extract_kv_field "$listener_line" "intra_lost")
+                intra_loss_pct=$(extract_kv_field "$listener_line" "intra_loss_pct")
+                inter_lost=$(extract_kv_field "$listener_line" "inter_lost")
+                inter_loss_pct=$(extract_kv_field "$listener_line" "inter_loss_pct")
+                dupes_inter=$(extract_kv_field "$listener_line" "dupes_inter")
+
+                if [ -n "$intra_lost" ] || [ -n "$inter_lost" ] || [ -n "$dupes_inter" ]; then
+                    if [ "${intra_lost:-0}" = "0" ] && [ "${inter_lost:-0}" = "0" ] && [ "${dupes_inter:-0}" = "0" ]; then
+                        success "[test:$scenario_name] $vm_label recepcao: intra_lost=${intra_lost:-0} (${intra_loss_pct:-0}%) inter_lost=${inter_lost:-0} (${inter_loss_pct:-0}%) dupes_inter=${dupes_inter:-0}"
+                    else
+                        warn "[test:$scenario_name] $vm_label recepcao: intra_lost=${intra_lost:-?} (${intra_loss_pct:-?}%) inter_lost=${inter_lost:-?} (${inter_loss_pct:-?}%) dupes_inter=${dupes_inter:-?}"
+                    fi
+                else
+                    info "[test:$scenario_name] $vm_label dados de recepcao: $listener_line"
+                fi
             fi
             ;;
     esac
@@ -209,12 +237,16 @@ rm -rf "$WORKDIR"
 
 info "[test:$SCENARIO_NAME] subindo $VM_COUNT VM(s) com cpu=$QEMU_CPU"
 
+CPU_ARGS=""
+if [ "$QEMU_CPU" != "default" ] && [ -n "$QEMU_CPU" ]; then
+    CPU_ARGS="-cpu $QEMU_CPU"
+fi
+
 vm_index=1
 while [ "$vm_index" -le "$VM_COUNT" ]; do
     mac_suffix=$(printf "%02x" "$vm_index")
     "$QEMU_BIN" \
         -machine virt \
-        -cpu "$QEMU_CPU" \
         -nographic \
         -m 512 \
         -kernel "$KERNEL" \
@@ -224,7 +256,8 @@ while [ "$vm_index" -le "$VM_COUNT" ]; do
         -device virtio-net-device,netdev=vlan0,mac=52:54:00:12:34:"$mac_suffix" \
         -serial file:"$LOG_DIR/vm${vm_index}.log" \
         -monitor none \
-        -no-reboot &
+        -no-reboot \
+        $CPU_ARGS &
     PIDS="$PIDS $!"
     vm_index=$(expr "$vm_index" + 1)
 done
