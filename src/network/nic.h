@@ -8,7 +8,6 @@
 #include <mutex>
 #include <cstring>
 #include <cstdio>
-#include <atomic>
 #include <stack>
 
 // Network
@@ -143,10 +142,9 @@ public:
     // no primeiro attach, inicia a recepção da engine (SIGIO pra raw socket, semaforo pra SHM)
     void attach(Observer *obs, Protocol_Number prot) {
         Observed::attach(obs, prot);
-        bool expected = false;
-        if (_receive_started.compare_exchange_strong(expected, true)) {
+        std::call_once(_receive_started, [this]() {
             Engine::start_receiving();
-        }
+        });
     };
 
     void detach(Observer *obs, Protocol_Number prot) {
@@ -163,7 +161,7 @@ private:
     }
 
     Address _address;
-    std::atomic<bool> _receive_started{false};
+    std::once_flag _receive_started;
     std::mutex _buf_mtx;
     Statistics _statistics;
     Buffer<Ethernet::Frame> _buffer[BUFFER_SIZE];
