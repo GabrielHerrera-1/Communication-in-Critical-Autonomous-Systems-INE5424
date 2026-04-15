@@ -14,9 +14,10 @@
 namespace {
 
 static const char RTT_LABEL[] = "rtt-intra";
-static const int SAMPLE_COUNT = 20;
+static const int MAX_SAMPLES = 50000;
 static const unsigned int STARTUP_DELAY_SEC = 5;
-static const unsigned int INTER_SAMPLE_DELAY_USEC = 100000;
+static const unsigned int INTER_SAMPLE_DELAY_USEC = 0;
+static const unsigned int RUN_DURATION_SEC = 3600;
 static const Ethernet::Address INTERNAL_ADDRESS = Ethernet::Address::INTERNAL;
 
 void build_payload(char * buffer,
@@ -83,9 +84,17 @@ public:
 
         sleep(STARTUP_DELAY_SEC);
 
-        _samples_us.reserve(SAMPLE_COUNT);
+        _samples_us.reserve(MAX_SAMPLES);
 
-        for (int sequence = 1; sequence <= SAMPLE_COUNT; ++sequence) {
+        const unsigned long long deadline_us =
+            monotonic_raw_us() +
+            static_cast<unsigned long long>(RUN_DURATION_SEC) * 1000000ULL;
+
+        for (int sequence = 1; sequence <= MAX_SAMPLES; ++sequence) {
+            if (monotonic_raw_us() >= deadline_us) {
+                break;
+            }
+
             const unsigned long long start_us = monotonic_raw_us();
             send_message("ping", sequence);
             receive_expected("pong", sequence, Component_Ports::TEST_RTT_INTRA_RESPONDER);
@@ -93,10 +102,12 @@ public:
 
             _samples_us.push_back(end_us - start_us);
 
-            if (INTER_SAMPLE_DELAY_USEC > 0 && sequence != SAMPLE_COUNT) {
+            if (INTER_SAMPLE_DELAY_USEC > 0) {
                 usleep(INTER_SAMPLE_DELAY_USEC);
             }
         }
+
+        send_message("stop", 0);
 
         dump_results();
         std::cout << "[rtt-intra][initiator] RTT intra benchmark concluido." << std::endl;
@@ -200,8 +211,41 @@ public:
 
         sleep(STARTUP_DELAY_SEC);
 
-        for (int sequence = 1; sequence <= SAMPLE_COUNT; ++sequence) {
-            receive_expected("ping", sequence, Component_Ports::TEST_RTT_INTRA_INITIATOR);
+        for (int sequence = 1; sequence <= MAX_SAMPLES; ++sequence) {
+            Message message;
+            if (!_communicator->receive(&message)) {
+                std::cerr << "[rtt-intra][responder] falha ao receber" << std::endl;
+                std::exit(1);
+            }
+
+            const char * payload = reinterpret_cast<const char *>(message.data());
+            char kind[16];
+            int seq = 0;
+            if (!parse_payload(payload, kind, sizeof(kind), &seq)) {
+                std::cerr << "[rtt-intra][responder] payload invalido: " << payload << std::endl;
+                std::exit(1);
+            }
+
+            if (std::strcmp(kind, "stop") == 0) {
+                break;
+            }
+
+            if (std::strcmp(kind, "ping") != 0 || seq != sequence) {
+                std::cerr << "[rtt-intra][responder] mensagem inesperada: " << payload << std::endl;
+                std::exit(1);
+            }
+
+            if (message.origin().port != Component_Ports::TEST_RTT_INTRA_INITIATOR) {
+                std::cerr << "[rtt-intra][responder] porta de origem inesperada: "
+                          << message.origin().port << std::endl;
+                std::exit(1);
+            }
+
+            if (message.origin().address != INTERNAL_ADDRESS) {
+                std::cerr << "[rtt-intra][responder] origem nao eh interna" << std::endl;
+                std::exit(1);
+            }
+
             send_message("pong", sequence);
         }
 
@@ -209,40 +253,6 @@ public:
     }
 
 private:
-    void receive_expected(const char * expected_kind,
-                          int expected_sequence,
-                          Port expected_origin_port) {
-        Message message;
-        if (!_communicator->receive(&message)) {
-            std::cerr << "[rtt-intra][responder] falha ao receber ping" << std::endl;
-            std::exit(1);
-        }
-
-        const char * payload = reinterpret_cast<const char *>(message.data());
-        char kind[16];
-        int sequence = 0;
-        if (!parse_payload(payload, kind, sizeof(kind), &sequence)) {
-            std::cerr << "[rtt-intra][responder] payload invalido: " << payload << std::endl;
-            std::exit(1);
-        }
-
-        if (std::strcmp(kind, expected_kind) != 0 || sequence != expected_sequence) {
-            std::cerr << "[rtt-intra][responder] mensagem inesperada: " << payload << std::endl;
-            std::exit(1);
-        }
-
-        if (message.origin().port != expected_origin_port) {
-            std::cerr << "[rtt-intra][responder] porta de origem inesperada: "
-                      << message.origin().port << std::endl;
-            std::exit(1);
-        }
-
-        if (message.origin().address != INTERNAL_ADDRESS) {
-            std::cerr << "[rtt-intra][responder] origem nao eh interna" << std::endl;
-            std::exit(1);
-        }
-    }
-
     void send_message(const char * kind, int sequence) {
         char payload[64];
         build_payload(payload, sizeof(payload), kind, sequence);

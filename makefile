@@ -149,7 +149,7 @@ measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_r
 measure-rtt-intra: select-qemu-cpu $(RTT_INTRA_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
 	@set -e; \
 	artifacts_file=$$(mktemp /tmp/so2-rtt-intra-artifacts.XXXXXX); \
-	KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(RTT_INTRA_BIN)" 1 rtt-intra-benchmark "RTT intra benchmark concluido."; \
+	TIMEOUT_SEC=180 KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(RTT_INTRA_BIN)" 1 rtt-intra-benchmark "[rtt-intra][initiator] RTT intra benchmark concluido."; \
 	artifacts_root=$$(cat $$artifacts_file); \
 	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log"; \
 	echo "[measure-rtt-intra] logs preservados em $$artifacts_root/logs"; \
@@ -174,10 +174,20 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# pega todos os .o gerados de src/ e empacota num único arquivo .a (biblioteca estática)
+# o .a é um arquivo que agrupa código compilado pra ser linkado por outros programas
+# r=insere/substitui os .o dentro do .a  c=cria o .a se não existir  s=gera índice interno (acelera o linker)
+# $@ = o alvo, ou seja, build/lib/libso2.a
+# $^ = todos os pré-requisitos, ou seja, todos os .o de src/
 $(STATIC_LIB): $(OBJS)
 	@mkdir -p "$(dir $@)"
 	$(AR) rcs $@ $^
 
+# regra genérica: pra cada .cpp em tests/ gera um binário em build/tests/
+# o % é um coringa: test_foo.cpp vira build/tests/test_foo
+# $< = o .cpp do teste (primeiro pré-requisito)
+# -L = diz pro linker onde procurar a lib  -lso2 = linka libso2.a
+# $@ = o binário de saída
 $(BIN_DIR)/%: $(TEST_DIR)/%.cpp $(STATIC_LIB)
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -l$(LIB_NAME) $(LDFLAGS) -o $@
