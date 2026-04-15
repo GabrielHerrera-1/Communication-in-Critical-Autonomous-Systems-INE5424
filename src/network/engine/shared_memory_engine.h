@@ -156,7 +156,7 @@ private:
 
     ReceiveHandler _on_receive;
     std::thread _worker;
-    std::atomic<bool> _running_receiver{false};
+    std::atomic<int> _running_receiver{0};
 };
 
 #endif

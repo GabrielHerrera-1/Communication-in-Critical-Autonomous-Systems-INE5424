@@ -35,7 +35,7 @@ private:
     int _sockfd{-1};
     int _ifindex{0};
     std::thread _worker;
-    std::atomic<bool> _running{false};
+    std::atomic<int> _running{0};
 };
 
 #endif
