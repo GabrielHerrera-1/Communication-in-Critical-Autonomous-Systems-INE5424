@@ -60,11 +60,6 @@ int Vehicle::run_component_process(unsigned int index,
     c.first->set_communicator(&communicator);
     c.first->set_port(c.second);
 
-    if (!SharedMemoryEngine::wait_until_all_processes_ready()) {
-        std::cerr << "[Vehicle] bootstrap barrier falhou para " << c.first->id() << std::endl;
-        return 1;
-    }
-
     c.first->run();
     return 0;
 }
@@ -124,14 +119,6 @@ int Vehicle::run_gateway_process() {
     }
 
     _gateway.run();
-
-    if (!SharedMemoryEngine::wait_until_all_processes_ready()) {
-        std::cerr << "[Vehicle] bootstrap barrier falhou para o gateway." << std::endl;
-        cleanup_children();
-        _gateway.stop();
-        SharedMemoryEngine::destroy(context);
-        return 1;
-    }
 
     for (pid_t pid : pids) {
         int status;

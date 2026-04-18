@@ -31,38 +31,34 @@ namespace SHM {
 
     // registro dos componentes do veiculo
     struct Component_Entry {
-        uint16_t port; // identificador logico do componente ou tipo de componente
-        uint16_t slot; // indice fixo no registro
-        uint8_t active; // 1 quando ta em uso
-        uint8_t receiver_ready; // 1 quando a recepcao assincrona local ja esta armada
+        uint16_t port;     // identificador logico do componente ou tipo de componente
+        uint16_t slot;     // indice fixo no registro
+        uint8_t  active;   // 1 quando ta em uso
+        uint64_t read_seq; // proxima seq que esse leitor vai consumir (back-pressure)
     };
 
     // cada posicao do ring buffer é um Broadcast_Slot. representa msg ou frame em circulação
     struct Broadcast_Slot {
-        uint64_t seq; // sequencia global do slot. msm que o indice fisico reutilize posições a seq global continua crescendo
-        uint16_t writer_slot; // indica quem escreveu o slot
-        uint16_t remaining_readers; // quantos leitores ainda faltam consumir esse buffer
-        uint16_t flags; // para slot flags definidas acima. destino/origem do slot
-        uint32_t frame_size;
+        uint64_t      seq;          // sequencia global do slot. msm que o indice fisico reutilize posições a seq global continua crescendo
+        uint16_t      writer_slot;  // indica quem escreveu o slot
+        uint16_t      flags;        // para slot flags definidas acima. destino/origem do slot
+        uint32_t      frame_size;
         unsigned char frame[FRAME_SIZE];
     };
 
     // representa o ring buffer como um todo
-    // quando algm for publicar um novo frame pega next write seq, escreve nesse slot e incrementa o next write seq 
+    // quando algm for publicar um novo frame pega next write seq, escreve nesse slot e incrementa o next write seq
     struct Broadcast_Ring {
-        uint64_t next_write_seq; // proxima seq a ser escrita
+        uint64_t       next_write_seq;   // proxima seq a ser escrita
         Broadcast_Slot slots[SLOT_COUNT]; // array com slots reais do ring buffer
     };
 
     struct Region {
-        uint32_t magic;
-        uint16_t component_count;
-        uint8_t gateway_active;
-        uint16_t bootstrap_ready_count;
-        uint8_t bootstrap_released;
-
-        Component_Entry components[MAX_COMPONENTS];
-        Broadcast_Ring ring;
+        uint32_t         magic;
+        uint16_t         component_count;
+        uint8_t          gateway_active;
+        Component_Entry  components[MAX_COMPONENTS];
+        Broadcast_Ring   ring;
     };
 }
 

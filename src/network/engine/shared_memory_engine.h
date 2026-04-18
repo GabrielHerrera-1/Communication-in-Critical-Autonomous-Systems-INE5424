@@ -62,8 +62,8 @@ public:
     void engine_get_address(unsigned char * mac);
     void engine_set_nonblocking(bool enabled);
 
-    // inicia recepção: thread bloqueia no semaforo P(), quando V() chega
-    // drena tudo e chama on_receive pra cada frame
+    // inicia recepção: thread bloqueia no sem_wait do pending quando acorda
+    // chama on_receive pra cada frame entregue
     void start_receiving();
     // na SHM o self-drop é decidido pelo writer_slot, não pelo MAC
     bool engine_should_drop_frame(const Ethernet::Frame & frame,
@@ -76,62 +76,56 @@ public:
 private:
 
     // define a numeração fixa dos semaforos system v dentro do semid unico da shm
-    // explicacao: quando fazemos semget o kernel n cria nomes de semaforos, ele cria
-    // um vetor de semaforos indexados por numero
+    // quando fazemos semget o kernel n cria nomes de semaforos, ele cria um vetor
+    // de semaforos indexados por numero
     enum Semaphore_Index {
-        SEM_RING_MUTEX = 0, // pra acessar ring buffer e atualizar contadores
-        SEM_FREE_SLOTS = 1, // quantos slots podem ser reutilizados
-        SEM_GATEWAY_PENDING = 2, // quantas msgs o gateway ainda precisa consumir
-        SEM_BOOTSTRAP_MUTEX = 3, // serializa a barreira de startup
-        SEM_BOOTSTRAP_RELEASE = 4, // libera gateway e componentes ao mesmo tempo
-        SEM_COMPONENT_PENDING_BASE = 5 // quantas msgs o componente i ainda precisa consumir. cada componente tem seu proprio contador de mensagens pendentes
+        SEM_RING_MUTEX   = 0, // unica regiao critica / unico mutex
+        SEM_PENDING_BASE = 1  // +slot: contador bloqueante de mensagens pendentes por leitor
+                              // slot 0 é o gateway
     };
 
 private:
-    // calcula qual o SEM_COMPONENT_PENDING_BASE do componente de um dado slot
-    // exemplo: slot 0 --> SEM_COMPONENT_PENDING_BASE + 0
-    static int sem_component_pending(unsigned int slot);
+    // indice do contador pendente do leitor em slot
+    static int pending_sem_index(uint16_t slot);
 
-    // devolve quantos semaforos o semget() precisa criar
-    static unsigned int semaphore_count(unsigned int component_count);
+    // devolve quantos semaforos o semget() precisa criar (1 mutex + 1 por leitor registrado)
+    static unsigned int semaphore_count(unsigned int registered_slots);
 
     // quando a shm ja existe no kernel, um processo n acessa ela automaticamente
     // ela precisa fazer shmat(shmid, ...) pra anexar a shm no espaço de end dele
     // e depois fazer shmdt pra desanexar. esses metodos fazem isso
     bool attach_region();
     void detach_region();
-    bool set_receiver_ready(bool ready);
-
-    // responde em qual semaforo essa instancia deve esperar por mensagens. evita codigo desnecessario dps
-    int pending_semaphore() const;
 
     // consulta o cadastro da shm pra saber se o componente daquele slot ta ativo
-    bool is_component_active(unsigned int slot) const;
+    bool is_component_active_locked(unsigned int slot) const;
 
     // informa se o gateway participa do consumo do ring
-    bool is_gateway_active() const;
+    bool is_gateway_active_locked() const;
 
-    // quantos leitores ativos consomem cada slot do ring
-    unsigned int active_reader_count() const;
+    // menor read_seq entre os leitores ativos 
+    uint64_t min_active_read_seq_locked() const;
 
-    // quantos leitores uma mensagem escrita por um componente deve ter. esse valor vai pra remaining readers
-    unsigned int delivery_count_for_component_write() const;
+    // true se cabe mais uma escrita no ring sem atropelar nenhum leitor ativo
+    bool ring_has_space_locked() const;
 
-    // quantos leitores uma msg escrita pelo gateway deve ter
-    unsigned int delivery_count_for_gateway_write() const;
+    // decide se o leitor reader_slot deve receber um v() pro frame recem publicado
+    bool should_signal_reader_locked(unsigned int reader_slot,
+                                     uint16_t     writer_slot,
+                                     uint16_t     flags) const;
 
-    // decide se o slot consumido deve ser entregue pra esta instancia
-    bool should_deliver_slot(const SHM::Broadcast_Slot & slot) const;
+    // decide se o slot consumido deve ser entregue localmente pra esta instancia
+    bool slot_targets_me(const SHM::Broadcast_Slot & slot) const;
 
 
     // wrappers dos semaforos system V
 
     // p() no semaforo indicado
-    bool wait_semaphore(int sem_index);
+    bool sem_wait(int sem_index);
     // versao nao bloqueante
-    bool try_wait_semaphore(int sem_index);
+    bool try_sem_wait(int sem_index);
     // faz v() no semaforo indicado
-    bool signal_semaphore(int sem_index);
+    bool sem_post(int sem_index);
 
     // espera slot livre, trava mutex do ring, pega seq atual, escolhe slot fisico, escreve o frame, preenche writer_slot e preenche flags
     int write_slot(const void * frame,
