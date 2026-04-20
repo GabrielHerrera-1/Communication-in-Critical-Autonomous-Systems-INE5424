@@ -46,10 +46,6 @@ public:
     // o papel do processo eh definido no bootstrap via slot reservado
     static bool is_gateway_process();
 
-    // barreira de bootstrap do runtime: gateway e componentes so entram no
-    // run() depois que todos montaram protocol/communicator e a recepcao
-    // assincrona da SHM ja foi armada de fato.
-    static bool wait_until_all_processes_ready();
 
 public:
     SharedMemoryEngine();
@@ -60,7 +56,6 @@ public:
     int engine_receive(void * frame, unsigned int size);
     void engine_close();
     void engine_get_address(unsigned char * mac);
-    void engine_set_nonblocking(bool enabled);
 
     // inicia recepção: thread bloqueia no sem_wait do pending quando acorda
     // chama on_receive pra cada frame entregue
@@ -79,9 +74,11 @@ private:
     // quando fazemos semget o kernel n cria nomes de semaforos, ele cria um vetor
     // de semaforos indexados por numero
     enum Semaphore_Index {
-        SEM_RING_MUTEX   = 0, // unica regiao critica / unico mutex
-        SEM_PENDING_BASE = 1  // +slot: contador bloqueante de mensagens pendentes por leitor
-                              // slot 0 é o gateway
+        SEM_RING_MUTEX   = 0,   // unica regiao critica / unico mutex
+        SEM_RING_EMPTY   = 1,   
+        SEM_RING_FULL    = 2,   
+        SEM_PENDING_BASE = 3    // +slot: contador bloqueante de mensagens pendentes por leitor
+                                // slot 0 é o gateway
     };
 
 private:
@@ -103,27 +100,11 @@ private:
     // informa se o gateway participa do consumo do ring
     bool is_gateway_active_locked() const;
 
-    // menor read_seq entre os leitores ativos 
-    uint64_t min_active_read_seq_locked() const;
-
-    // true se cabe mais uma escrita no ring sem atropelar nenhum leitor ativo
-    bool ring_has_space_locked() const;
-
-    // decide se o leitor reader_slot deve receber um v() pro frame recem publicado
-    bool should_signal_reader_locked(unsigned int reader_slot,
-                                     uint16_t     writer_slot,
-                                     uint16_t     flags) const;
-
-    // decide se o slot consumido deve ser entregue localmente pra esta instancia
-    bool slot_targets_me(const SHM::Broadcast_Slot & slot) const;
-
-
     // wrappers dos semaforos system V
 
     // p() no semaforo indicado
     bool sem_wait(int sem_index);
-    // versao nao bloqueante
-    bool try_sem_wait(int sem_index);
+
     // faz v() no semaforo indicado
     bool sem_post(int sem_index);
 
