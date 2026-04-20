@@ -17,7 +17,7 @@ EXPECTED_SEND=${5:-}
 EXPECTED_RECEIVE=${6:-}
 TIMEOUT_SEC=${TIMEOUT_SEC:-180}
 QEMU_CPU=${QEMU_CPU:-default}
-QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
+QEMU_BIN=${QEMU_BIN:-qemu-system-x86_64}
 LOGS_DIR=${LOGS_DIR:-$REPO_ROOT/logs}
 KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-1}
 ARTIFACTS_FILE=${ARTIFACTS_FILE:-}
@@ -59,7 +59,7 @@ error() {
     printf '%s%s%s\n' "$COLOR_RED" "$1" "$COLOR_RESET" >&2
 }
 
-KERNEL="$REPO_ROOT/kernel/Image"
+KERNEL="$REPO_ROOT/kernel/bzImage"
 BASE_INITRAMFS="$REPO_ROOT/kernel/initramfs.cpio"
 BINARY_PATH="$REPO_ROOT/$BINARY_REL"
 mkdir -p "$LOGS_DIR" "$LOGS_DIR/$SCENARIO_NAME"
@@ -246,14 +246,13 @@ vm_index=1
 while [ "$vm_index" -le "$VM_COUNT" ]; do
     mac_suffix=$(printf "%02x" "$vm_index")
     "$QEMU_BIN" \
-        -machine virt \
         -nographic \
         -m 512 \
         -kernel "$KERNEL" \
         -initrd "$INITRAMFS_PATH" \
         -append "root=/dev/ram rw console=ttyS0 so2.vm_id=$vm_index" \
         -netdev socket,id=vlan0,mcast=230.0.0.1:"$MCAST_PORT" \
-        -device virtio-net-device,netdev=vlan0,mac=52:54:00:12:34:"$mac_suffix" \
+        -device virtio-net-pci,netdev=vlan0,mac=52:54:00:12:34:"$mac_suffix" \
         -serial file:"$LOG_DIR/vm${vm_index}.log" \
         -monitor none \
         -no-reboot \
