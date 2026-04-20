@@ -1,5 +1,5 @@
-ARCH ?= riscv
-CROSS_COMPILE ?= riscv64-linux-gnu-
+ARCH ?= x86
+CROSS_COMPILE ?=
 JOBS ?= $(shell nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 
 SRC_DIR := src
@@ -10,11 +10,11 @@ BIN_DIR := $(BUILD_DIR)/tests
 LIB_DIR := $(BUILD_DIR)/lib
 LOG_DIR ?= logs
 
-QEMU ?= qemu-system-riscv64
+QEMU ?= qemu-system-x86_64
 QEMU_MATCH ?= $(notdir $(QEMU))
 QEMU_CPU ?= auto
 QEMU_CPU_FILE := $(BUILD_DIR)/.qemu_cpu
-QEMU_CPU_CANDIDATES ?= default max rv64 sifive-u54
+QEMU_CPU_CANDIDATES ?= default max qemu64
 
 PYTHON ?= python3
 PKILL ?= pkill
@@ -39,14 +39,18 @@ RUN_QEMU_TEST := ./tests/run_qemu_test.sh
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
-CORE_TEST_NAMES := basic v3 gateway_path local_broadcast
+CORE_TEST_NAMES := basic v3 gateway_path local_broadcast timestamp sptp_sync sptp_drift antenna
 BENCHMARK_NAMES := rtt stress rtt_intra
 
 CORE_TEST_BINS := $(addprefix $(BIN_DIR)/,$(CORE_TEST_NAMES))
 BENCHMARK_BINS := $(addprefix $(BIN_DIR)/,$(BENCHMARK_NAMES))
 TEST_BINS := $(CORE_TEST_BINS) $(BENCHMARK_BINS)
 
-BASIC_BIN := $(BIN_DIR)/basic
+TIMESTAMP_BIN    := $(BIN_DIR)/timestamp
+SPTP_SYNC_BIN    := $(BIN_DIR)/sptp_sync
+SPTP_DRIFT_BIN   := $(BIN_DIR)/sptp_drift
+ANTENNA_BIN      := $(BIN_DIR)/antenna
+BASIC_BIN        := $(BIN_DIR)/basic
 MESH_BIN := $(BIN_DIR)/v3
 GATEWAY_PATH_BIN := $(BIN_DIR)/gateway_path
 LOCAL_BROADCAST_BIN := $(BIN_DIR)/local_broadcast
@@ -58,7 +62,7 @@ STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress measure-rtt measure-rtt-intra measure-rtt-10 logs clean
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress test-timestamp test-sptp-sync test-sptp-drift test-antenna measure-rtt measure-rtt-intra measure-rtt-10 logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -126,6 +130,26 @@ test-gateway-path: select-qemu-cpu $(GATEWAY_PATH_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario gateway-path..."
 	@LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(GATEWAY_PATH_BIN)" 2 gateway-path "cenario validado."
 	@echo "[test] cenario gateway-path aprovado."
+
+test-timestamp: select-qemu-cpu $(TIMESTAMP_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario timestamp (1 VM)..."
+	@LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(TIMESTAMP_BIN)" 1 timestamp "cenario validado:"
+	@echo "[test] cenario timestamp aprovado."
+
+test-sptp-sync: select-qemu-cpu $(SPTP_SYNC_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario sptp-sync (2 VMs)..."
+	@TIMEOUT_SEC=120 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_SYNC_BIN)" 2 sptp-sync "cenario validado."
+	@echo "[test] cenario sptp-sync aprovado."
+
+test-sptp-drift: select-qemu-cpu $(SPTP_DRIFT_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario sptp-drift (2 VMs, ~70s)..."
+	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_DRIFT_BIN)" 2 sptp-drift "cenario validado."
+	@echo "[test] cenario sptp-drift aprovado."
+
+test-antenna: select-qemu-cpu $(ANTENNA_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario antenna (RSU + slave, 2 VMs)..."
+	@TIMEOUT_SEC=60 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(ANTENNA_BIN)" 2 antenna "cenario validado."
+	@echo "[test] cenario antenna aprovado."
 
 test-local-broadcast: select-qemu-cpu $(LOCAL_BROADCAST_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario local-broadcast..."

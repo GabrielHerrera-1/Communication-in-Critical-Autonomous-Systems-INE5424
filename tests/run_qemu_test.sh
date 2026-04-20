@@ -17,7 +17,9 @@ EXPECTED_SEND=${5:-}
 EXPECTED_RECEIVE=${6:-}
 TIMEOUT_SEC=${TIMEOUT_SEC:-180}
 QEMU_CPU=${QEMU_CPU:-default}
-QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
+QEMU_BIN=${QEMU_BIN:-qemu-system-x86_64}
+QEMU_MACHINE=${QEMU_MACHINE:-}
+QEMU_NET_DEV=${QEMU_NET_DEV:-}
 LOGS_DIR=${LOGS_DIR:-$REPO_ROOT/logs}
 KEEP_ARTIFACTS=${KEEP_ARTIFACTS:-1}
 ARTIFACTS_FILE=${ARTIFACTS_FILE:-}
@@ -237,23 +239,43 @@ rm -rf "$WORKDIR"
 
 info "[test:$SCENARIO_NAME] subindo $VM_COUNT VM(s) com cpu=$QEMU_CPU"
 
+case "$(basename "$QEMU_BIN")" in
+    qemu-system-x86_64|qemu-system-i386)
+        : "${QEMU_MACHINE:=}"
+        : "${QEMU_NET_DEV:=virtio-net-pci}"
+        ;;
+    qemu-system-riscv64|qemu-system-riscv32|qemu-system-aarch64|qemu-system-arm)
+        : "${QEMU_MACHINE:=virt}"
+        : "${QEMU_NET_DEV:=virtio-net-device}"
+        ;;
+    *)
+        : "${QEMU_MACHINE:=}"
+        : "${QEMU_NET_DEV:=virtio-net-pci}"
+        ;;
+esac
+
 CPU_ARGS=""
 if [ "$QEMU_CPU" != "default" ] && [ -n "$QEMU_CPU" ]; then
     CPU_ARGS="-cpu $QEMU_CPU"
+fi
+
+MACHINE_ARGS=""
+if [ -n "$QEMU_MACHINE" ]; then
+    MACHINE_ARGS="-machine $QEMU_MACHINE"
 fi
 
 vm_index=1
 while [ "$vm_index" -le "$VM_COUNT" ]; do
     mac_suffix=$(printf "%02x" "$vm_index")
     "$QEMU_BIN" \
-        -machine virt \
+        $MACHINE_ARGS \
         -nographic \
         -m 512 \
         -kernel "$KERNEL" \
         -initrd "$INITRAMFS_PATH" \
         -append "root=/dev/ram rw console=ttyS0 so2.vm_id=$vm_index" \
         -netdev socket,id=vlan0,mcast=230.0.0.1:"$MCAST_PORT" \
-        -device virtio-net-device,netdev=vlan0,mac=52:54:00:12:34:"$mac_suffix" \
+        -device "$QEMU_NET_DEV",netdev=vlan0,mac=52:54:00:12:34:"$mac_suffix" \
         -serial file:"$LOG_DIR/vm${vm_index}.log" \
         -monitor none \
         -no-reboot \

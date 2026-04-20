@@ -8,6 +8,9 @@
 #include "../core/observers/concurrent_observer.h"
 #include "../core/buffer.h"
 #include "../core/traits.h"
+#include "../core/clock.h"
+#include "packet_kind.h"
+#include "sptp_protocol.h"
 #include <cstring>
 #include <limits>
 #include <type_traits>
@@ -83,13 +86,19 @@ public:
 
     class Header {
     public:
+        int64_t timestamp() const { return _timestamp; }
+        void timestamp(int64_t ts) { _timestamp = ts; }
         Port src_port() const { return _src_port; }
         void src_port(Port p) { _src_port = p; }
         Port dst_port() const { return _dst_port; }
         void dst_port(Port p) { _dst_port = p; }
+        PacketKind kind() const { return _kind; }
+        void kind(PacketKind k) { _kind = k; }
     private:
-        Port _src_port; // quem enviou
-        Port _dst_port; // quem recebeu (vai ser broadcast por enquanto)
+        int64_t _timestamp; 
+        Port _src_port; 
+        Port _dst_port; 
+        PacketKind _kind; 
     };
 
     static const unsigned int MTU = SharedMemoryNIC::MTU - sizeof(Header);
@@ -129,16 +138,43 @@ public:
     }
 
         ~Protocol() {
-        _shm_nic.detach(this, PROTO);
-        if (_socket_nic) {
-            _socket_nic->detach(this, PROTO);
-            delete _socket_nic;
+            disable_sync();
+            _shm_nic.detach(this, PROTO);
+            if (_socket_nic) {
+                _socket_nic->detach(this, PROTO);
+                delete _socket_nic;
+            }
+    }
+
+    // pra comecar sync sptp
+    // se o addr da vm master for igual ao own_addr aqui, estamos na master, senao e slave
+    void enable_sync(Address master_addr) {
+        if constexpr (!std::is_void_v<RawSocketNIC>) {
+            if (!_socket_nic) {
+                return;
+            }
+            if (_sptp) {
+                return;
+            }
+
+            Address own_addr(_socket_nic->address(), 0);
+            _sptp = new SPTP_Protocol<Address>(own_addr, master_addr, &Protocol::send);
+            _sptp->start();
         }
     }
 
+    void disable_sync() {
+        if constexpr (!std::is_void_v<RawSocketNIC>) {
+            if (_sptp) {
+                _sptp->stop();
+                delete _sptp;
+                _sptp = nullptr;
+            }
+        }
+    }
     
-    
-    static int send(Address from, Address to, const void *data, unsigned int size) {
+    // TODO: mudei a assinatura do send e do receive, ver se ta ok
+    static int send(Address from, Address to, const void *data, unsigned int size, int64_t ts = 0, PacketKind kind = PacketKind::DATA) {
 
         if (!_instance) return -1;
 
@@ -147,16 +183,16 @@ public:
         // a decisão de roteamento é feita no update do gateway
         if constexpr (!std::is_void_v<RawSocketNIC>){
             if (_instance->_socket_nic && !to.is_internal()) {
-                return send_via_nic(_instance->_socket_nic, from, to, data, size);
+                return send_via_nic(_instance->_socket_nic, from, to, data, size, ts, kind);
             }
         }
         // se não usa shm
-        return send_via_nic(&_instance->_shm_nic, from, to, data, size);
+        return send_via_nic(&_instance->_shm_nic, from, to, data, size, ts, kind);
 
     };
 
     // ja é genérico o suficiente, vai servir caso algum dia o gatewaw queira ler mensagens 
-    static int receive(Buffer *buf, Address *from, void *data, unsigned int size) {
+    static int receive(Buffer *buf, Address *from, int64_t *ts, void *data, unsigned int size) {
         if (!_instance || !buf) return -1;
         if (buf->size() < sizeof(Header)) {
             free_buffer(buf);
@@ -166,6 +202,9 @@ public:
         Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         if (from) {
             *from = Address(buf->data()->src(), packet->src_port());
+        }
+        if (ts) {
+            *ts = packet->timestamp();
         }
 
         unsigned int data_size = buf->size() - sizeof(Header);
@@ -223,7 +262,28 @@ private:
                 }
             }
 
+            // quando um pacote chega da rede:
+            // se for sptp entrega ao _sptp on receive
+            // se for data entrega para a shm 
             if (_socket_nic && _socket_nic->owns(buf)) {
+                if (_sptp) {
+                    PacketKind k = packet->kind();
+                    if (k == PacketKind::SPTP_SYNC || k == PacketKind::SPTP_REQUEST_SYNC) {
+                        Address src_addr(buf->data()->src(), packet->src_port());
+                        unsigned int payload_size;
+
+                        if (buf->size() > sizeof(Header)) {
+                            payload_size = buf->size() - sizeof(Header);
+                        } else {
+                            payload_size = 0;
+                        }
+
+                        _sptp->on_receive(k, src_addr, packet->timestamp(), packet->template data<unsigned char>(), payload_size);
+                        free_buffer(buf);
+                        return;
+                    }
+                }
+
                 Buffer *fwd_buf = _shm_nic.alloc(buf->data()->dst(), PROTO, buf->size());
                 if (fwd_buf) {
                     std::memcpy(fwd_buf->data(), buf->data(), Ethernet::HEADER_SIZE + buf->size());
@@ -255,18 +315,23 @@ private:
         }
     }
 
+    // TODO: tudo bem o sync ser unicast?
     template<typename NICType>
-    static int send_via_nic(NICType *nic, Address from, Address to, const void *data, unsigned int size) {
-        Buffer *buf = nic->alloc(to.paddr(), PROTO, sizeof(Header) + size);
+    static int send_via_nic(NICType *nic, Address from, Address to, const void *data, unsigned int size, int64_t ts, PacketKind kind) {
+        Physical_Address physical_dst = to.paddr();
+
+        Buffer *buf = nic->alloc(physical_dst, PROTO, sizeof(Header) + size);
         if (!buf) return -1;
 
         Packet *packet = reinterpret_cast<Packet *>(buf->data()->payload());
         packet->src_port(from.port());
         packet->dst_port(to.port());
+        packet->kind(kind);
 
         if (data && size)
             memcpy(packet->template data<unsigned char>(), data, size);
-
+        // TODO: monotonic_stamp sera?
+        packet->timestamp(ts != 0 ? ts : Clock::now_ns());
         return nic->send(buf);
     }
 
@@ -278,6 +343,7 @@ private:
     // Channel protocols are usually singletons
     static Observed _observed;
     static Protocol* _instance; // ponteiro pro singleton
+    SPTP_Protocol<Address>* _sptp = nullptr;
 };
 
 // inicializacao dos static
