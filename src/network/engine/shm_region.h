@@ -26,7 +26,6 @@ namespace SHM {
     enum Slot_Flags : uint16_t {
         DELIVER_TO_COMPONENTS = 0x0001, // bit 0 ligado. conteudo do slot deve ser entregue aos componentes locais
         DELIVER_TO_GATEWAY = 0x0002, // bit 1 ligado. conteudo deve ser entregue ao gateway
-        FROM_NETWORK = 0x0004 // bit 2 ligado. significa que o frame veio da rede
     };
 
     // registro dos componentes do veiculo

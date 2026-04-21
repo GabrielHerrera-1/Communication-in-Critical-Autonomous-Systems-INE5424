@@ -94,12 +94,6 @@ private:
     bool attach_region();
     void detach_region();
 
-    // consulta o cadastro da shm pra saber se o componente daquele slot ta ativo
-    bool is_component_active_locked(unsigned int slot) const;
-
-    // informa se o gateway participa do consumo do ring
-    bool is_gateway_active_locked() const;
-
     // wrappers dos semaforos system V
 
     // p() no semaforo indicado
@@ -127,7 +121,6 @@ private:
     uint16_t _port;
     bool _gateway;
     bool _nonblocking;
-    uint64_t _next_seq;
 
     ReceiveHandler _on_receive;
     std::thread _worker;

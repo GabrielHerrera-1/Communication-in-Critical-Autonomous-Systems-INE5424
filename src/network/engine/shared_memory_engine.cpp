@@ -11,6 +11,8 @@
 #include <sys/shm.h>
 #include <unistd.h>
 
+#include <iostream>
+
 namespace {
 
 union semun {
@@ -74,18 +76,21 @@ SharedMemoryEngine::Context SharedMemoryEngine::create(
     std::memset(region, 0, sizeof(SHM::Region));
     region->magic = SHM::MAGIC;
     region->component_count = static_cast<uint16_t>(registered_slots);
+    region->ring.next_write_seq = 0;
 
     region->components[SHM::GATEWAY_SLOT].port = 0;
     region->components[SHM::GATEWAY_SLOT].slot = SHM::GATEWAY_SLOT;
     for (unsigned int i = 1; i < registered_slots; ++i) {
         region->components[i].port = ports[i - 1];
         region->components[i].slot = static_cast<uint16_t>(i);
+        region->components[i].read_seq = 0;
     }
 
     shmdt(region);
 
     unsigned short values[SEM_PENDING_BASE + SHM::MAX_COMPONENTS] = {};
     values[SEM_RING_MUTEX] = 1;
+    values[SEM_RING_EMPTY] = SHM::SLOT_COUNT;
 
     semun arg;
     arg.array = values;
@@ -128,8 +133,7 @@ SharedMemoryEngine::SharedMemoryEngine()
   _slot(SHM::INVALID_SLOT),
   _port(0),
   _gateway(false),
-  _nonblocking(false),
-  _next_seq(0) {}
+  _nonblocking(false){}
 
 void SharedMemoryEngine::engine_init(const char *) {
     if (!_configuration_ready) {
@@ -149,16 +153,14 @@ void SharedMemoryEngine::engine_init(const char *) {
         return;
     }
 
-    // leitor so enxerga mensagens publicadas a partir deste momento.
-    _next_seq = _region->ring.next_write_seq;
-
     if (_gateway) {
         _region->gateway_active = 1;
-    } else if (_slot < _region->component_count) {
+    } 
+    if (_slot < _region->component_count) {
         _region->components[_slot].active = 1;
     }
     if (_slot < _region->component_count) {
-        _region->components[_slot].read_seq = _next_seq;
+        _region->components[_slot].read_seq = _region->ring.next_write_seq;
     }
 
     sem_post(SEM_RING_MUTEX);
@@ -172,7 +174,7 @@ int SharedMemoryEngine::engine_send(const void * frame, unsigned int size) {
             frame,
             size,
             SHM::GATEWAY_WRITER,
-            SHM::DELIVER_TO_COMPONENTS | SHM::FROM_NETWORK
+            SHM::DELIVER_TO_COMPONENTS
         );
     }
 
@@ -186,7 +188,13 @@ int SharedMemoryEngine::engine_send(const void * frame, unsigned int size) {
 
 int SharedMemoryEngine::engine_receive(void * frame, unsigned int size) {
     if (!_region || !frame || size == 0) return -1;
-    return read_slot(frame, size);
+
+    sem_wait(pending_sem_index(_slot));
+    if (_running_receiver){
+       return read_slot(frame, size);
+    }
+    return -1;
+
 }
 
 void SharedMemoryEngine::engine_close() {
@@ -219,26 +227,13 @@ void SharedMemoryEngine::start_receiving() {
 
         while (_running_receiver) {
             int bytes = engine_receive(frame, sizeof(frame));
-            if (bytes <= 0) {
-                if (!_running_receiver) break;
-                continue;
-            }
+            if (bytes <= 0) break;
 
             if (_on_receive) {
                 _on_receive(reinterpret_cast<const unsigned char*>(frame),
                             static_cast<size_t>(bytes));
             }
 
-            engine_set_nonblocking(true);
-            while (_running_receiver) {
-                bytes = engine_receive(frame, sizeof(frame));
-                if (bytes <= 0) break;
-                if (_on_receive) {
-                    _on_receive(reinterpret_cast<const unsigned char*>(frame),
-                                static_cast<size_t>(bytes));
-                }
-            }
-            engine_set_nonblocking(false);
         }
     });
 }
@@ -247,10 +242,6 @@ void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
     if (!mac) return;
     // na SHM o endereco fisico e interno ao veiculo.
     std::memset(mac, 0, Ethernet::Address::LENGTH);
-}
-
-void SharedMemoryEngine::engine_set_nonblocking(bool enabled) {
-    _nonblocking = enabled;
 }
 
 bool SharedMemoryEngine::engine_should_drop_frame(const Ethernet::Frame &,
@@ -283,61 +274,6 @@ void SharedMemoryEngine::detach_region() {
     }
 }
 
-// metodos locked pq presume que quem chama ta sob posse do mutex
-
-bool SharedMemoryEngine::is_component_active_locked(unsigned int slot) const {
-    return _region &&
-           slot < _region->component_count &&
-           _region->components[slot].active;
-}
-
-bool SharedMemoryEngine::is_gateway_active_locked() const {
-    return _region && _region->gateway_active;
-}
-
-// menor read_seq entre os leitores ativos. se ninguem ativo, trata o ring como vazio pra todos (= next_write_seq, ou seja, cabe tudo)
-uint64_t SharedMemoryEngine::min_active_read_seq_locked() const {
-    uint64_t minv = _region->ring.next_write_seq;
-    bool any = false;
-
-    if (is_gateway_active_locked()) {
-        minv = std::min(minv, _region->components[SHM::GATEWAY_SLOT].read_seq);
-        any = true;
-    }
-    for (unsigned int i = 1; i < _region->component_count; ++i) {
-        if (is_component_active_locked(i)) {
-            minv = std::min(minv, _region->components[i].read_seq);
-            any = true;
-        }
-    }
-    return any ? minv : _region->ring.next_write_seq;
-}
-
-bool SharedMemoryEngine::ring_has_space_locked() const {
-    return (_region->ring.next_write_seq - min_active_read_seq_locked()) < SHM::SLOT_COUNT;
-}
-
-// writer n tem como saber no momento da escrita quais leitores vao receber o frame, so sabe qm ta atiov
-bool SharedMemoryEngine::should_signal_reader_locked(unsigned int reader_slot,
-                                                     uint16_t writer_slot,
-                                                     uint16_t flags) const {
-    (void) writer_slot;
-    (void) flags;
-    // todo leitor precisa avanças quando chega frame, independentemente das outras flags
-    if (reader_slot == SHM::GATEWAY_SLOT) {
-        return is_gateway_active_locked();
-    }
-    return is_component_active_locked(reader_slot);
-}
-
-// leitor aplica o self drop aq
-bool SharedMemoryEngine::slot_targets_me(const SHM::Broadcast_Slot & slot) const {
-    if (_gateway) {
-        return slot.flags & SHM::DELIVER_TO_GATEWAY;
-    }
-    return (slot.flags & SHM::DELIVER_TO_COMPONENTS) && (slot.writer_slot != _slot);
-}
-
 bool SharedMemoryEngine::sem_wait(int sem_index) {
     struct sembuf op = {};
     op.sem_num = static_cast<unsigned short>(sem_index);
@@ -350,16 +286,6 @@ bool SharedMemoryEngine::sem_wait(int sem_index) {
         return false;
     }
     return true;
-}
-
-// se o sem estiver em 0, em vez de dormir ele retorna o erro EAGAIN e func devolve false. usado na drenagem
-bool SharedMemoryEngine::try_sem_wait(int sem_index) {
-    struct sembuf op = {};
-    op.sem_num = static_cast<unsigned short>(sem_index);
-    op.sem_op  = -1;
-    op.sem_flg = IPC_NOWAIT;
-
-    return semop(_context.semid, &op, 1) == 0;
 }
 
 bool SharedMemoryEngine::sem_post(int sem_index) {
@@ -375,72 +301,56 @@ bool SharedMemoryEngine::sem_post(int sem_index) {
     return true;
 }
 
-int SharedMemoryEngine::write_slot(
-    const void * frame,
-    unsigned int size,
-    uint16_t writer_slot,
-    uint16_t flags
-) {
-    while (true) {
-        if (!sem_wait(SEM_RING_MUTEX)) return -1;
-        if (ring_has_space_locked()) break;
-        sem_post(SEM_RING_MUTEX);
-        usleep(100);
-    }
+int SharedMemoryEngine::write_slot(const void * frame, unsigned int size, uint16_t writer_slot, uint16_t flags) {
+
+    sem_wait(SEM_RING_EMPTY);
+    sem_wait(SEM_RING_MUTEX);
 
     const uint64_t seq = _region->ring.next_write_seq++;
     SHM::Broadcast_Slot & slot = _region->ring.slots[seq % SHM::SLOT_COUNT];
 
-    slot.seq         = seq;
-    slot.writer_slot = writer_slot;
-    slot.flags       = flags;
-    slot.frame_size  = (size <= SHM::FRAME_SIZE) ? size : SHM::FRAME_SIZE;
+    slot.writer_slot  = writer_slot;
+    slot.flags        = flags;
+    slot.frame_size   = (size <= SHM::FRAME_SIZE) ? size : SHM::FRAME_SIZE;
+    slot.readers_left = _region->component_count;
     std::memcpy(slot.frame, frame, slot.frame_size);
 
     for (unsigned int i = 0; i < _region->component_count; ++i) {
-        if (should_signal_reader_locked(i, writer_slot, flags)) {
-            sem_post(pending_sem_index(static_cast<uint16_t>(i)));
-        }
+        sem_post(pending_sem_index(static_cast<uint16_t>(i)));
     }
+    //std::cout << "slot " << _slot << " write seq: "<< seq << ", readers left: " << slot.readers_left << std::endl;
 
     sem_post(SEM_RING_MUTEX);
     return static_cast<int>(slot.frame_size);
 }
 
 int SharedMemoryEngine::read_slot(void * frame, unsigned int size) {
-    const int sem = pending_sem_index(_slot);
+    sem_wait(SEM_RING_MUTEX);
 
-    while (true) {
-        if (_nonblocking) {
-            if (!try_sem_wait(sem)) return 0;
-        } else {
-            if (!sem_wait(sem)) return -1;
-        }
+    auto seq = _region->components[_slot].read_seq++;
 
-        if (!_running_receiver) return -1;
+    SHM::Broadcast_Slot & slot = _region->ring.slots[seq % SHM::SLOT_COUNT];
+    
+    bool deliver_to_components = slot.flags & SHM::DELIVER_TO_COMPONENTS;
+    bool deliver_to_gateway = slot.flags & SHM::DELIVER_TO_GATEWAY;
+    bool should_read = ((is_gateway_process() && deliver_to_gateway) || deliver_to_components);
+    
+    unsigned int copy_size = 0;
 
-        if (!sem_wait(SEM_RING_MUTEX)) return -1;
-
-        SHM::Broadcast_Slot & slot = _region->ring.slots[_next_seq % SHM::SLOT_COUNT];
-        if (slot.seq != _next_seq) {
-            // back-pressure quebrou
-            sem_post(SEM_RING_MUTEX);
-            return -1;
-        }
-
-        unsigned int copy_size = 0;
-        const bool deliver = slot_targets_me(slot);
-        if (deliver) {
-            copy_size = (slot.frame_size <= size) ? slot.frame_size : size;
-            std::memcpy(frame, slot.frame, copy_size);
-        }
-
-        ++_next_seq;
-        _region->components[_slot].read_seq = _next_seq;
-
-        sem_post(SEM_RING_MUTEX);
-
-        if (deliver) return static_cast<int>(copy_size);
-        // slot nao era pra mim: avancei o cursor e volto pro proximo sem_wait
+    if (should_read){
+        copy_size = (slot.frame_size <= size) ? slot.frame_size : size;
+        std::memcpy(frame, slot.frame, copy_size);
     }
+    
+    if(slot.readers_left <= 1){
+        sem_post(SEM_RING_EMPTY);
+        //std::cout << "post empty" << std::endl;
+    }
+    slot.readers_left--;
+    //std::cout << "slot " << _slot << " read seq: "<< seq << ", readers left: " << slot.readers_left << std::endl;
+
+    sem_post(SEM_RING_MUTEX);
+
+    return copy_size;
+    
 }
