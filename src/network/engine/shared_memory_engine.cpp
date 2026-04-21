@@ -188,13 +188,7 @@ int SharedMemoryEngine::engine_send(const void * frame, unsigned int size) {
 
 int SharedMemoryEngine::engine_receive(void * frame, unsigned int size) {
     if (!_region || !frame || size == 0) return -1;
-
-    sem_wait(pending_sem_index(_slot));
-    if (_running_receiver){
-       return read_slot(frame, size);
-    }
-    return -1;
-
+    return read_slot(frame, size);
 }
 
 void SharedMemoryEngine::engine_close() {
@@ -227,7 +221,10 @@ void SharedMemoryEngine::start_receiving() {
 
         while (_running_receiver) {
             int bytes = engine_receive(frame, sizeof(frame));
-            if (bytes <= 0) break;
+            if (bytes <= 0){
+                if (!_running_receiver) break;
+                continue;
+            }
 
             if (_on_receive) {
                 _on_receive(reinterpret_cast<const unsigned char*>(frame),
@@ -325,32 +322,37 @@ int SharedMemoryEngine::write_slot(const void * frame, unsigned int size, uint16
 }
 
 int SharedMemoryEngine::read_slot(void * frame, unsigned int size) {
-    sem_wait(SEM_RING_MUTEX);
 
-    auto seq = _region->components[_slot].read_seq++;
+    while (true){
 
-    SHM::Broadcast_Slot & slot = _region->ring.slots[seq % SHM::SLOT_COUNT];
-    
-    bool deliver_to_components = slot.flags & SHM::DELIVER_TO_COMPONENTS;
-    bool deliver_to_gateway = slot.flags & SHM::DELIVER_TO_GATEWAY;
-    bool should_read = ((is_gateway_process() && deliver_to_gateway) || deliver_to_components);
-    
-    unsigned int copy_size = 0;
+        sem_wait(pending_sem_index(_slot));
 
-    if (should_read){
-        copy_size = (slot.frame_size <= size) ? slot.frame_size : size;
-        std::memcpy(frame, slot.frame, copy_size);
+        sem_wait(SEM_RING_MUTEX);
+
+        auto seq = _region->components[_slot].read_seq++;
+
+        SHM::Broadcast_Slot & slot = _region->ring.slots[seq % SHM::SLOT_COUNT];
+        
+        bool deliver_to_components = slot.flags & SHM::DELIVER_TO_COMPONENTS;
+        bool deliver_to_gateway = slot.flags & SHM::DELIVER_TO_GATEWAY;
+        bool should_read = (_gateway && deliver_to_gateway) || (deliver_to_components && slot.writer_slot != _slot);
+        
+        unsigned int copy_size = 0;
+
+        if (should_read){
+            copy_size = (slot.frame_size <= size) ? slot.frame_size : size;
+            std::memcpy(frame, slot.frame, copy_size);
+        }
+        
+        if(slot.readers_left <= 1){
+            sem_post(SEM_RING_EMPTY);
+            //std::cout << "post empty" << std::endl;
+        }
+        slot.readers_left--;
+        //std::cout << "slot " << _slot << " read seq: "<< seq << ", readers left: " << slot.readers_left << std::endl;
+
+        sem_post(SEM_RING_MUTEX);
+
+        if(should_read) return copy_size;
     }
-    
-    if(slot.readers_left <= 1){
-        sem_post(SEM_RING_EMPTY);
-        //std::cout << "post empty" << std::endl;
-    }
-    slot.readers_left--;
-    //std::cout << "slot " << _slot << " read seq: "<< seq << ", readers left: " << slot.readers_left << std::endl;
-
-    sem_post(SEM_RING_MUTEX);
-
-    return copy_size;
-    
 }
