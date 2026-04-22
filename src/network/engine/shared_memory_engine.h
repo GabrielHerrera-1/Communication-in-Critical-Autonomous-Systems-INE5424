@@ -75,9 +75,8 @@ private:
     // de semaforos indexados por numero
     enum Semaphore_Index {
         SEM_RING_MUTEX   = 0,   // unica regiao critica / unico mutex
-        SEM_RING_EMPTY   = 1,   
-        SEM_RING_FULL    = 2,   
-        SEM_PENDING_BASE = 3    // +slot: contador bloqueante de mensagens pendentes por leitor
+        SEM_RING_EMPTY   = 1,
+        SEM_PENDING_BASE = 2   // +slot: contador bloqueante de mensagens pendentes por leitor
                                 // slot 0 é o gateway
     };
 
