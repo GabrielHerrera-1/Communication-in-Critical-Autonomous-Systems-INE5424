@@ -11,8 +11,6 @@
 #include <sys/shm.h>
 #include <unistd.h>
 
-#include <iostream>
-
 namespace {
 
 union semun {
