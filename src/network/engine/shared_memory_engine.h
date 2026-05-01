@@ -101,6 +101,8 @@ private:
     // faz v() no semaforo indicado
     bool sem_post(int sem_index);
 
+    uint64_t least_read_seq_not_me();
+
     // espera slot livre, trava mutex do ring, pega seq atual, escolhe slot fisico, escreve o frame, preenche writer_slot e preenche flags
     int write_slot(const void * frame,
                    unsigned int size,

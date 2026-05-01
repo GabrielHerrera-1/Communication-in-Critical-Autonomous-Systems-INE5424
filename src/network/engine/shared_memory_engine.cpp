@@ -269,6 +269,17 @@ void SharedMemoryEngine::detach_region() {
     }
 }
 
+// lock free (carefull when using it)
+uint64_t SharedMemoryEngine::least_read_seq_not_me(){
+    // max uint64_t 
+    uint64_t min = 0xffffffffffffffff;
+    for (size_t i = 0; i < _region->component_count; i++){
+        if (i == _slot) continue;
+        min = std::min(min, _region->components[i].read_seq);
+    }
+    return min;
+}
+
 bool SharedMemoryEngine::sem_wait(int sem_index) {
     struct sembuf op = {};
     op.sem_num = static_cast<unsigned short>(sem_index);
@@ -307,13 +318,11 @@ int SharedMemoryEngine::write_slot(const void * frame, unsigned int size, uint16
     slot.writer_slot  = writer_slot;
     slot.flags        = flags;
     slot.frame_size   = (size <= SHM::FRAME_SIZE) ? size : SHM::FRAME_SIZE;
-    slot.readers_left = _region->component_count;
     std::memcpy(slot.frame, frame, slot.frame_size);
 
     for (unsigned int i = 0; i < _region->component_count; ++i) {
         sem_post(pending_sem_index(static_cast<uint16_t>(i)));
     }
-    //std::cout << "slot " << _slot << " write seq: "<< seq << ", readers left: " << slot.readers_left << std::endl;
 
     sem_post(SEM_RING_MUTEX);
     return static_cast<int>(slot.frame_size);
@@ -341,15 +350,11 @@ int SharedMemoryEngine::read_slot(void * frame, unsigned int size) {
             copy_size = (slot.frame_size <= size) ? slot.frame_size : size;
             std::memcpy(frame, slot.frame, copy_size);
         }
-        
-        if(slot.readers_left <= 1){
-            sem_post(SEM_RING_EMPTY);
-            //std::cout << "post empty" << std::endl;
-        }
-        slot.readers_left--;
-        //std::cout << "slot " << _slot << " read seq: "<< seq << ", readers left: " << slot.readers_left << std::endl;
+        bool should_post_empty = _region->components[_slot].read_seq <= least_read_seq_not_me();
 
         sem_post(SEM_RING_MUTEX);
+
+        if(should_post_empty) sem_post(SEM_RING_EMPTY);
 
         if(should_read) return copy_size;
     }

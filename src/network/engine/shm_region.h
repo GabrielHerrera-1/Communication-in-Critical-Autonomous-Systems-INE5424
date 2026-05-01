@@ -41,7 +41,6 @@ namespace SHM {
         uint16_t      writer_slot;  // indica quem escreveu o slot
         uint16_t      flags;        // para slot flags definidas acima. destino/origem do slot
         uint32_t      frame_size;
-        uint16_t      readers_left;       // alinhamento, nao usado
         unsigned char frame[FRAME_SIZE];
     };
 
