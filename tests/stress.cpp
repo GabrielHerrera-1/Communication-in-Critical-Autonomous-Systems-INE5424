@@ -226,7 +226,7 @@ public:
     }
 
 private:
-    bool send_with_retry(const Message * msg) {
+    bool send_with_retry(Message * msg) {
         for (int attempt = 0; attempt < SEND_RETRY_LIMIT; ++attempt) {
             if (_communicator->send(msg)) {
                 return true;
