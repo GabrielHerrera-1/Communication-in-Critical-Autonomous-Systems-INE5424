@@ -141,11 +141,6 @@ private:
             std::exit(1);
         }
 
-        if (message.origin().address != expected_vm_mac(expected_vm_id)) {
-            std::cerr << "[gateway-path][vm" << _vm_id
-                      << "] MAC de origem inesperado" << std::endl;
-            std::exit(1);
-        }
     }
 
 private:

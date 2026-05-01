@@ -3,12 +3,16 @@
 
 // forward declarations (declarar antecipadamente evita a necessidade de dar #include)
 
+#include <cstdint>
+
 // T sera a engine da NIC (placa de rede)
 template <typename T> class NIC;
 class RawSocketEngine;
 class SharedMemoryEngine;
 // quando for usar Protocol precisa passar um tipo que represente uma NIC aqui dentro
 template <typename SharedMemoryNIC, typename RawSocketNIC> class Protocol; 
+// SPTP usa o Address do Protocol, forward declare pra poder especializar Traits
+template <typename Address> class SPTP_Protocol;
 
 // template generico vazio
 template <typename T> struct Traits { };
@@ -41,6 +45,21 @@ template <> struct Traits<NIC<SharedMemoryEngine>> {
 // (o header do Protocol viaja dentro do frame na SHM também)
 template <> struct Traits<Protocol<NIC<SharedMemoryEngine>, void>> {
     static const unsigned short ETHERNET_PROTOCOL_NUMBER = 0x8888;
+};
+
+template <typename Address> struct Traits<SPTP_Protocol<Address>> {
+
+    static constexpr double  MAX_SILENCE_S = 15.0;
+
+    // usado no EWMA (delay_novo = (1 - 0.125) × delay_antigo + 0.125 × amostra_atual). serve basicamente pra diminuir o peso de amostras antigas
+    // esse peso aqui é o peso de uma amostra nova
+    static constexpr double  ALPHA = 0.125;
+
+    static constexpr int64_t MIN_OFFSET_NS = 100'000;       // 100us
+    static constexpr int64_t MAX_OFFSET_NS = 200'000'000;   // 200ms
+
+    // palpite inicial de delay, refinado em cada round-trip.
+    static constexpr int64_t INITIAL_DELAY_NS = 100'000;     // 100us
 };
 
 #endif

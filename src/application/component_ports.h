@@ -34,6 +34,14 @@ public:
     static constexpr Port TEST_LOCAL_BROADCAST_E = 0xF205;
     static constexpr Port TEST_STRESS_SENDER = 0xF301;
     static constexpr Port TEST_STRESS_LISTENER = 0xF302;
+
+    // TODO: limpar isso aqui
+    static constexpr Port TEST_TIMESTAMP_SENDER   = 0xF401;
+    static constexpr Port TEST_TIMESTAMP_RECEIVER = 0xF402;
+    static constexpr Port TEST_SPTP_SYNC          = 0xF403;
+    static constexpr Port TEST_DRIFT              = 0xF404;
+    static constexpr Port TEST_SPTP_DRIFT         = 0xF404;
+    static constexpr Port TEST_ANTENNA            = 0xF405;
 };
 
 #endif

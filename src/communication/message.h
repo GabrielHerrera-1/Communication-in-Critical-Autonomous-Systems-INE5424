@@ -4,26 +4,22 @@
 #include <cstring>
 #include <cstdint>
 
-#include "../network/ethernet.h"
-
 class Message {
 public:
     struct Origin {
-        Ethernet::Address address;
         uint16_t port;
 
-        Origin() : address(), port(0) {}
-        Origin(const Ethernet::Address & address, uint16_t port)
-            : address(address), port(port) {}
+        Origin() : port(0) {}
+        Origin(uint16_t port) : port(port) {}
     };
 
     static const unsigned int MAX_SIZE = 1400;
 
-    Message() : _origin(), _size(MAX_SIZE) {
+    Message() : _origin(), _timestamp(0), _size(MAX_SIZE) {
         memset(_payload, 0, sizeof(_payload));
     }
 
-    Message(const void* data, unsigned int size) : _origin(), _size(0) {
+    Message(const void* data, unsigned int size) : _origin(), _timestamp(0), _size(0) {
         memset(_payload, 0, sizeof(_payload));
         if (data && size > 0) {
             _size = (size <= MAX_SIZE) ? size : MAX_SIZE;
@@ -57,8 +53,17 @@ public:
         _origin = o;
     }
 
+    int64_t timestamp() const {
+        return _timestamp;
+    }
+
+    void timestamp(int64_t ts) {
+        _timestamp = ts;
+    }
+
 private:
     Origin _origin;
+    int64_t _timestamp;
     unsigned char _payload[MAX_SIZE];
     unsigned int _size;
 };

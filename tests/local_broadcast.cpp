@@ -11,7 +11,6 @@
 
 namespace {
 
-static const Ethernet::Address INTERNAL_ADDRESS = Ethernet::Address::INTERNAL;
 static const unsigned int MESSAGE_COUNT_PER_SENDER = 2;
 static const unsigned int SENDER_COUNT = 3;
 
@@ -211,12 +210,6 @@ private:
         if (sender_tag_for_port(origin_port) != sender_tag) {
             std::cerr << "[local-broadcast] " << id()
                       << " sender no payload nao bate com origin.port" << std::endl;
-            std::exit(1);
-        }
-
-        if (inbound.origin().address != INTERNAL_ADDRESS) {
-            std::cerr << "[local-broadcast] " << id()
-                      << " endereco de origem local inesperado" << std::endl;
             std::exit(1);
         }
 

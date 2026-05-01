@@ -38,7 +38,9 @@ SharedMemoryEngine::Context SharedMemoryEngine::create(
 ) {
     Context context = {-1, -1};
 
-    if (!ports || component_count == 0 || component_count >= SHM::MAX_COMPONENTS) {
+    // rsu (antena) nao registra componentes: ports=nullptr e count=0.
+    // validamos ports apenas quando count>0.
+    if (component_count >= SHM::MAX_COMPONENTS || (component_count > 0 && !ports)) {
         return context;
     }
 

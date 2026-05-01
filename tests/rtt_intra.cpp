@@ -18,8 +18,6 @@ static const int MAX_SAMPLES = 50000;
 static const unsigned int STARTUP_DELAY_SEC = 5;
 static const unsigned int INTER_SAMPLE_DELAY_USEC = 0;
 static const unsigned int RUN_DURATION_SEC = 3600;
-static const Ethernet::Address INTERNAL_ADDRESS = Ethernet::Address::INTERNAL;
-
 void build_payload(char * buffer,
                    std::size_t size,
                    const char * kind,
@@ -153,10 +151,6 @@ private:
             std::exit(1);
         }
 
-        if (message.origin().address != INTERNAL_ADDRESS) {
-            std::cerr << "[rtt-intra][initiator] origem nao eh interna" << std::endl;
-            std::exit(1);
-        }
     }
 
     void dump_results() const {
@@ -238,11 +232,6 @@ public:
             if (message.origin().port != Component_Ports::TEST_RTT_INTRA_INITIATOR) {
                 std::cerr << "[rtt-intra][responder] porta de origem inesperada: "
                           << message.origin().port << std::endl;
-                std::exit(1);
-            }
-
-            if (message.origin().address != INTERNAL_ADDRESS) {
-                std::cerr << "[rtt-intra][responder] origem nao eh interna" << std::endl;
                 std::exit(1);
             }
 

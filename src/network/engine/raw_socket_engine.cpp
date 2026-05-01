@@ -120,7 +120,10 @@ void RawSocketEngine::start_receiving() {
             siginfo_t si{};
             int sig = sigtimedwait(&mask, &si, &ts);
             if (sig < 0) {
-                if (errno == EAGAIN) continue; // timeout, checa _running
+                // EAGAIN = timeout expirou sem sinal: volta pro while pra reavaliar _running
+                // EINTR  = interrompido por outro sinal (debugger, SIGTERM, etc): nao e erro, retoma a espera
+                if (errno == EAGAIN || errno == EINTR) continue;
+                perror("[Engine] sigtimedwait");
                 break;
             }
 

@@ -2,6 +2,7 @@
 #define COMUNICATOR_H
 
 #include "message.h"
+#include "../core/clock.h"
 #include "../core/observers/concurrent_observer.h"
 
 template <typename Channel>
@@ -36,9 +37,12 @@ public:
         }
     }
 
-    bool send(const Message * message) {
+    // TODO: tirei o const pra colocar o timestamp aqui, ver se é necessario msm
+    bool send(Message * message) {
+        message->timestamp(Clock::monotonic_stamp());
         return (_channel->send(_address, Address::logical_broadcast(),
-                               message->data(), message->size()) > 0);
+                               message->data(), message->size(),
+                               message->timestamp()) > 0);
     }
 
     bool receive(Message * message) {
@@ -50,15 +54,18 @@ public:
         }
 
         typename Channel::Address from;
-        int size = _channel->receive(buf, &from, message->data(), message->size());
+        int64_t ts = 0;
+        int size = _channel->receive(buf, &from, &ts, message->data(), message->size());
         message->size(size);
-        message->origin(typename Message::Origin(from.paddr(), from.port()));
+        message->origin(typename Message::Origin(from.port()));
+        message->timestamp(ts);
 
         if (size <= 0)
             return false;
-        
+
         return true;
     }
+
 
 private:
     void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) {
