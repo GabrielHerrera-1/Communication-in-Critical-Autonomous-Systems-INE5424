@@ -43,14 +43,16 @@ int Vehicle::run_component_process(unsigned int index,
                                    const SharedMemoryEngine::Context & context) {
     auto c = _components[index];
 
-    RT_Priority::set_main_thread_priority(c.first->id().c_str());
-
     SharedMemoryEngine::Configuration config = {};
     config.context = context;
     config.slot = static_cast<uint16_t>(index + 1);
     config.port = c.second;
     SharedMemoryEngine::configure(config);
 
+    // Protocol/Communicator precisam ser construidos ANTES de configurar
+    // SCHED_DEADLINE: a construcao dispara pthread_create das threads de
+    // recepcao (SHM e raw socket), e o kernel rejeita pthread_create quando
+    // a thread mae esta em SCHED_DEADLINE sem SCHED_FLAG_RESET_ON_FORK.
     Vehicle_Protocol protocol;
     Communicator<Vehicle_Protocol> communicator(
         &protocol,
@@ -59,6 +61,24 @@ int Vehicle::run_component_process(unsigned int index,
     );
     c.first->set_communicator(&communicator);
     c.first->set_port(c.second);
+
+    // escolhe a politica de scheduling conforme o perfil declarado pelo
+    // componente: SCHED_DEADLINE para componentes do veiculo (sensores/
+    // atuadores reais, periodo 100ms, runtime 5ms) e SCHED_FIFO para
+    // componentes de teste que ainda dependem de sleep_for proprio.
+    const auto profile = c.first->rt_profile();
+    if (profile.policy == Component::RT_Profile::Policy::DEADLINE) {
+        if (!RT_Priority::set_current_thread_deadline(profile.deadline,
+                                                      c.first->id().c_str())) {
+            // fallback para FIFO se o kernel/admission control rejeitar:
+            // melhor rodar em best-effort do que o componente morrer no boot.
+            RT_Priority::set_current_thread_fifo(profile.fifo_priority,
+                                                 c.first->id().c_str());
+        }
+    } else {
+        RT_Priority::set_current_thread_fifo(profile.fifo_priority,
+                                             c.first->id().c_str());
+    }
 
     c.first->run();
     return 0;

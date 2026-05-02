@@ -62,4 +62,19 @@ template <typename Address> struct Traits<SPTP_Protocol<Address>> {
     static constexpr int64_t INITIAL_DELAY_NS = 100'000;     // 100us
 };
 
+// parametros default de SCHED_DEADLINE para componentes do veiculo.
+// derivacao em doc/etapa3 (ver relatorio):
+//  - period 100ms vem do requisito de P3 ("100ms pros componentes")
+//  - deadline = period (implicit deadline; admission control mais simples)
+//  - runtime 5ms = chute conservador; trabalho real hoje e sub-microssegundo
+//    (rand + memcpy), com folga generosa pra send/receive via SHM no futuro.
+//    util por componente = 5%, total 30% com 6 componentes -> bem abaixo
+//    do budget de ~95% do kernel.
+class Component_RT_Defaults {};
+template <> struct Traits<Component_RT_Defaults> {
+    static constexpr uint64_t PERIOD_NS   = 100'000'000ULL;
+    static constexpr uint64_t DEADLINE_NS = 100'000'000ULL;
+    static constexpr uint64_t RUNTIME_NS  =   5'000'000ULL;
+};
+
 #endif
