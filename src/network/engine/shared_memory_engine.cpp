@@ -335,6 +335,7 @@ int SharedMemoryEngine::read_slot(void * frame, unsigned int size) {
     while (true){
 
         sem_wait(pending_sem_index(_slot));
+        if (!_running_receiver) return -1;
 
         sem_wait(SEM_RING_MUTEX);
 
