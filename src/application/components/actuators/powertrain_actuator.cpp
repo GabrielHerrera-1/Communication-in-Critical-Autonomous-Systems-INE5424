@@ -1,6 +1,5 @@
 #include "powertrain_actuator.h"
-#include <thread>
-#include <chrono>
+#include <sched.h>
 
 Powertrain_Actuator::Powertrain_Actuator(const std::string& id)
     : Actuator(id) {}
@@ -13,12 +12,18 @@ void Powertrain_Actuator::initialize() {
 
 void Powertrain_Actuator::run() {
     for (int i = 0; i < 5; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        sched_yield();
     }
 }
 
 Component::Port Powertrain_Actuator::logical_port() const {
     return Component_Ports::POWERTRAIN_ACTUATOR;
+}
+
+Component::RT_Profile Powertrain_Actuator::rt_profile() const {
+    RT_Profile p;
+    p.policy = RT_Profile::Policy::DEADLINE;
+    return p;
 }
 
 void Powertrain_Actuator::apply(double value) {

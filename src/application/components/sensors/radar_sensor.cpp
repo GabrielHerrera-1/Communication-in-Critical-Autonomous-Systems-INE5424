@@ -1,7 +1,6 @@
 #include "radar_sensor.h"
-#include <thread>
-#include <chrono>
 #include <cstdlib>
+#include <sched.h>
 
 Radar_Sensor::Radar_Sensor(const std::string& id, unsigned int interval_ms)
     : Sensor(id, interval_ms) {}
@@ -17,10 +16,16 @@ void Radar_Sensor::run() {
     for (int i = 0; i < 5; i++) {
         _range_m = 5.0 + (rand() % 200);
         _rel_speed = (rand() % 60 - 30) * 0.5;
-        std::this_thread::sleep_for(std::chrono::milliseconds(_interval_ms));
+        sched_yield();
     }
 }
 
 Component::Port Radar_Sensor::logical_port() const {
     return Component_Ports::RADAR_SENSOR;
+}
+
+Component::RT_Profile Radar_Sensor::rt_profile() const {
+    RT_Profile p;
+    p.policy = RT_Profile::Policy::DEADLINE;
+    return p;
 }
