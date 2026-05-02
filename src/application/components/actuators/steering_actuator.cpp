@@ -1,6 +1,5 @@
 #include "steering_actuator.h"
-#include <thread>
-#include <chrono>
+#include <sched.h>
 
 Steering_Actuator::Steering_Actuator(const std::string& id)
     : Actuator(id) {}
@@ -13,12 +12,18 @@ void Steering_Actuator::initialize() {
 
 void Steering_Actuator::run() {
     for (int i = 0; i < 5; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        sched_yield();
     }
 }
 
 Component::Port Steering_Actuator::logical_port() const {
     return Component_Ports::STEERING_ACTUATOR;
+}
+
+Component::RT_Profile Steering_Actuator::rt_profile() const {
+    RT_Profile p;
+    p.policy = RT_Profile::Policy::DEADLINE;
+    return p;
 }
 
 void Steering_Actuator::apply(double value) {

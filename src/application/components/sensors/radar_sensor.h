@@ -12,6 +12,7 @@ public:
     void initialize() override;
     void run() override;
     Port logical_port() const override;
+    RT_Profile rt_profile() const override;
 
 private:
     double _range_m = 0.0;
