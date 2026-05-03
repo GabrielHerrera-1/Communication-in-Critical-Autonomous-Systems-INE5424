@@ -43,6 +43,7 @@ public:
     static constexpr Port TEST_SPTP_DRIFT         = 0xF404;
     static constexpr Port TEST_ANTENNA            = 0xF405;
     static constexpr Port TEST_DEADLINE           = 0xF406;
+    static constexpr Port PTP                     = 0xf407;
 };
 
 #endif

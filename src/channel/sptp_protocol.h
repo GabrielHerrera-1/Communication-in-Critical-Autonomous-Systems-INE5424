@@ -4,6 +4,7 @@
 #include "packet_kind.h"
 #include "../core/clock.h"
 #include "../core/traits.h"
+#include "../application/component_ports.h"
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -106,7 +107,6 @@ public:
 
         // slave so processa sync vinda do master conhecido
         if (kind != PacketKind::SPTP_SYNC) return;
-        if (!(sender_addr == _master_addr)) return;
         if (payload_size < sizeof(Sync_Payload)) return;
 
         // aq slave recebeu o sync
@@ -212,7 +212,7 @@ private:
         // ts = 0: deixa o Protocol carimbar com now_ns na saida da NIC. O
         // valor que vai no Header e ignorado pelo master, so existe pra
         // cumprir o formato PTP = {address, timestamp, ptp_frame}. TODO: ver se é necessario ter ts aq memso, se for, acho q devemos usar o monotonic aq
-        _send(_own_addr, _master_addr, &p, sizeof(p), 0,
+        _send(_own_addr, Address::physical_broadcast(Component_Ports::PTP), &p, sizeof(p), 0,
               PacketKind::SPTP_REQUEST_SYNC);
     }
 

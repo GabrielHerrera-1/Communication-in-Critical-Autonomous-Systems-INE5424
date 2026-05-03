@@ -274,7 +274,7 @@ private:
             if (_socket_nic && _socket_nic->owns(buf)) {
                 if (_sptp) {
                     PacketKind k = packet->kind();
-                    if (k == PacketKind::SPTP_SYNC || k == PacketKind::SPTP_REQUEST_SYNC) {
+                    if (k == PacketKind::SPTP_SYNC || (k == PacketKind::SPTP_REQUEST_SYNC && _is_rsu)) {
                         Address src_addr(buf->data()->src(), packet->src_port());
                         unsigned int payload_size;
 
