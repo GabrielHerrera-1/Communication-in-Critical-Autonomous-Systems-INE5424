@@ -44,6 +44,12 @@ public:
     static constexpr Port TEST_ANTENNA            = 0xF405;
     static constexpr Port TEST_DEADLINE           = 0xF406;
     static constexpr Port PTP                     = 0xf407;
+
+    static constexpr Port TEST_SPTP_VAL_INTRA_SENDER_A = 0xF410;
+    static constexpr Port TEST_SPTP_VAL_INTRA_SENDER_B = 0xF411;
+    static constexpr Port TEST_SPTP_VAL_INTRA_RECEIVER = 0xF412;
+    static constexpr Port TEST_SPTP_VAL_INTER_MASTER   = 0xF413;
+    static constexpr Port TEST_SPTP_VAL_INTER_SLAVE    = 0xF414;
 };
 
 #endif
