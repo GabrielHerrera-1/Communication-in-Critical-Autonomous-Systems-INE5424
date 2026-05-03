@@ -33,10 +33,9 @@ public:
     // ponteiro pra send do protocol. justamente pra evitar dependencia circular.
     using SendFn = int(*)(Address from, Address to, const void* data, unsigned int size, int64_t ts, PacketKind kind);
 
-    SPTP_Protocol(Address own_addr, Address master_addr, SendFn send_fn)
+    SPTP_Protocol(Address own_addr, bool is_master, SendFn send_fn)
         : _own_addr(own_addr),
-          _master_addr(master_addr),
-          _is_master(own_addr == master_addr),
+          _is_master(is_master),
           _send(send_fn),
           _current_delay_ns(Cfg::INITIAL_DELAY_NS),
           _current_offset_ns(0),

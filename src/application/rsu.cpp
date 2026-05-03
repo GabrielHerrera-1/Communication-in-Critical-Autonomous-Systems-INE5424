@@ -11,6 +11,7 @@ RSU::RSU() {}
 RSU::~RSU() {}
 
 void RSU::initialize() {
+    setenv("IS_RSU","true",1);
     _gateway.initialize();
 }
 
@@ -25,8 +26,9 @@ int RSU::run_gateway_process() {
         std::cerr << "[RSU] nao foi possivel criar SHM." << std::endl;
         return 1;
     }
-
+    
     _gateway.set_context(context);
+
     _gateway.run();
 
     std::cout << "[RSU] antena/master PTP rodando. aguardando slaves." << std::endl;

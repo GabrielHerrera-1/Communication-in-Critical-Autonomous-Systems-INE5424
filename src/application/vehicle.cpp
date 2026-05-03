@@ -23,6 +23,7 @@ void Vehicle::add_component(Component* component, Component::Port port) {
 }
 
 void Vehicle::initialize() {
+    setenv("IS_RSU","false",1);
     _gateway.initialize();
     for (auto c : _components)
         c.first->initialize();
