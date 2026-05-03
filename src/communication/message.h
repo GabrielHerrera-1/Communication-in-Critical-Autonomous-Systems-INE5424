@@ -3,19 +3,14 @@
 	
 #include <cstring>
 #include <cstdint>
+#include "../application/vehicle_protocol.h"
 
 class Message {
 public:
-    struct Origin {
-        uint16_t port;
-
-        Origin() : port(0) {}
-        Origin(uint16_t port) : port(port) {}
-    };
 
     static const unsigned int MAX_SIZE = 1400;
 
-    Message() : _origin(), _timestamp(0), _size(MAX_SIZE) {
+    Message() : _origin(nullptr), _timestamp(0), _size(MAX_SIZE) {
         memset(_payload, 0, sizeof(_payload));
     }
 
@@ -45,11 +40,11 @@ public:
         _size = (s <= MAX_SIZE) ? s : MAX_SIZE;
     }
 
-    const Origin & origin() const {
-        return _origin;
+    const Vehicle_Protocol::Address origin() const {
+        return *_origin;
     }
 
-    void origin(const Origin & o) {
+    void origin(Vehicle_Protocol::Address * o) {
         _origin = o;
     }
 
@@ -62,7 +57,7 @@ public:
     }
 
 private:
-    Origin _origin;
+    Vehicle_Protocol::Address *_origin;
     int64_t _timestamp;
     unsigned char _payload[MAX_SIZE];
     unsigned int _size;

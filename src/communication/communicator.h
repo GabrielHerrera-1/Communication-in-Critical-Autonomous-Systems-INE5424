@@ -57,7 +57,7 @@ public:
         int64_t ts = 0;
         int size = _channel->receive(buf, &from, &ts, message->data(), message->size());
         message->size(size);
-        message->origin(typename Message::Origin(from.port()));
+        message->origin(&from);
         message->timestamp(ts);
 
         if (size <= 0)
