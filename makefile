@@ -39,7 +39,7 @@ RUN_QEMU_TEST := ./tests/run_qemu_test.sh
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
-CORE_TEST_NAMES := basic v3 gateway_path local_broadcast timestamp sptp_sync sptp_drift antenna deadline
+CORE_TEST_NAMES := basic v3 gateway_path local_broadcast timestamp sptp_sync sptp_drift sptp_validation antenna deadline
 BENCHMARK_NAMES := rtt stress rtt_intra
 
 CORE_TEST_BINS := $(addprefix $(BIN_DIR)/,$(CORE_TEST_NAMES))
@@ -49,6 +49,7 @@ TEST_BINS := $(CORE_TEST_BINS) $(BENCHMARK_BINS)
 TIMESTAMP_BIN    := $(BIN_DIR)/timestamp
 SPTP_SYNC_BIN    := $(BIN_DIR)/sptp_sync
 SPTP_DRIFT_BIN   := $(BIN_DIR)/sptp_drift
+SPTP_VALIDATION_BIN := $(BIN_DIR)/sptp_validation
 ANTENNA_BIN      := $(BIN_DIR)/antenna
 DEADLINE_BIN     := $(BIN_DIR)/deadline
 BASIC_BIN        := $(BIN_DIR)/basic
@@ -63,7 +64,7 @@ STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress test-timestamp test-sptp-sync test-sptp-drift test-antenna test-deadline measure-rtt measure-rtt-intra measure-rtt-10 logs clean
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-gateway-path test-local-broadcast test-stress test-timestamp test-sptp-sync test-sptp-drift test-sptp-validation test-antenna test-deadline measure-rtt measure-rtt-intra measure-rtt-10 logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -146,6 +147,14 @@ test-sptp-drift: select-qemu-cpu $(SPTP_DRIFT_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario sptp-drift (2 VMs, ~70s)..."
 	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_DRIFT_BIN)" 2 sptp-drift "cenario validado."
 	@echo "[test] cenario sptp-drift aprovado."
+
+test-sptp-validation: select-qemu-cpu $(SPTP_VALIDATION_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] rodando cenario sptp-validation (intra+inter, 5 VMs)..."
+	@# success pattern e "[Vehicle] encerrado.", impresso pelo Vehicle SO depois
+	@# que todos os componentes terminaram com codigo 0. Garante que falha de
+	@# qualquer componente individual derruba a VM antes do criterio bater.
+	@TIMEOUT_SEC=240 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_VALIDATION_BIN)" 5 sptp-validation "[Vehicle] encerrado."
+	@echo "[test] cenario sptp-validation aprovado."
 
 test-antenna: select-qemu-cpu $(ANTENNA_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario antenna (RSU + slave, 2 VMs)..."

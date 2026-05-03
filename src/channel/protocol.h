@@ -269,25 +269,23 @@ private:
             }
 
             // quando um pacote chega da rede:
-            // se for sptp entrega ao _sptp on receive
-            // se for data entrega para a shm 
+            // se for sptp, consome aqui e nunca propaga pra SHM (independente
+            // de quem deveria processar)
+            // se for data, repassa pro SHM como antes
             if (_socket_nic && _socket_nic->owns(buf)) {
-                if (_sptp) {
-                    PacketKind k = packet->kind();
-                    if (k == PacketKind::SPTP_SYNC || (k == PacketKind::SPTP_REQUEST_SYNC && _is_rsu)) {
+                PacketKind k = packet->kind();
+
+                if (k == PacketKind::SPTP_SYNC || k == PacketKind::SPTP_REQUEST_SYNC) {
+                    if (_sptp && (k == PacketKind::SPTP_SYNC ||
+                                  (k == PacketKind::SPTP_REQUEST_SYNC && _is_rsu))) {
                         Address src_addr(buf->data()->src(), packet->src_port());
-                        unsigned int payload_size;
-
-                        if (buf->size() > sizeof(Header)) {
-                            payload_size = buf->size() - sizeof(Header);
-                        } else {
-                            payload_size = 0;
-                        }
-
-                        _sptp->on_receive(k, src_addr, packet->timestamp(), packet->template data<unsigned char>(), payload_size);
-                        free_buffer(buf);
-                        return;
+                        unsigned int payload_size = (buf->size() > sizeof(Header))
+                                                  ? buf->size() - sizeof(Header) : 0;
+                        _sptp->on_receive(k, src_addr, packet->timestamp(),
+                                          packet->template data<unsigned char>(), payload_size);
                     }
+                    free_buffer(buf);
+                    return;
                 }
 
                 Buffer *fwd_buf = _shm_nic.alloc(buf->data()->dst(), PROTO, buf->size());

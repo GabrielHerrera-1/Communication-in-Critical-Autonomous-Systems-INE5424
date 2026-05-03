@@ -187,7 +187,13 @@ private:
         int64_t  t2_prime;
     } __attribute__((packed));
 
+    // permite override em tempo de execucao via env var
+    // valor em segundos; se ausente ou <= 0, usa o default da traits
     static double load_max_silence() {
+        if (const char * raw = std::getenv("SO2_SPTP_MAX_SILENCE_S")) {
+            double v = std::atof(raw);
+            if (v > 0.0) return v;
+        }
         return Cfg::MAX_SILENCE_S;
     }
 
@@ -234,7 +240,6 @@ private:
     }
 
     Address _own_addr;
-    Address _master_addr;
     bool    _is_master;
     SendFn  _send;
 
