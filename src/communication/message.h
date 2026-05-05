@@ -10,7 +10,7 @@ public:
 
     static const unsigned int MAX_SIZE = 1400;
 
-    Message() : _origin(nullptr), _timestamp(0), _size(MAX_SIZE) {
+    Message() : _origin(), _timestamp(0), _size(MAX_SIZE) {
         memset(_payload, 0, sizeof(_payload));
     }
 
@@ -40,11 +40,11 @@ public:
         _size = (s <= MAX_SIZE) ? s : MAX_SIZE;
     }
 
-    const Vehicle_Protocol::Address origin() const {
-        return *_origin;
+    const Vehicle_Protocol::Address & origin() const {
+        return _origin;
     }
 
-    void origin(Vehicle_Protocol::Address * o) {
+    void origin(const Vehicle_Protocol::Address & o) {
         _origin = o;
     }
 
@@ -57,7 +57,7 @@ public:
     }
 
 private:
-    Vehicle_Protocol::Address *_origin;
+    Vehicle_Protocol::Address _origin;
     int64_t _timestamp;
     unsigned char _payload[MAX_SIZE];
     unsigned int _size;

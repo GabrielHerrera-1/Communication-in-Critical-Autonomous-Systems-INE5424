@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 
-Vehicle::Vehicle(){}
+Vehicle::Vehicle(bool is_master) : _is_master(is_master) {}
 
 Vehicle::~Vehicle() {
     for (auto c : _components)
@@ -23,7 +23,7 @@ void Vehicle::add_component(Component* component, Component::Port port) {
 }
 
 void Vehicle::initialize() {
-    setenv("IS_RSU","false",1);
+    _gateway.set_master(_is_master);
     _gateway.initialize();
     for (auto c : _components)
         c.first->initialize();

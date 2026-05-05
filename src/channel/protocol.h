@@ -125,7 +125,7 @@ public:
         _shm_nic(),
         _socket_nic(nullptr),
         _address(_shm_nic.address(), 0),
-        _is_rsu(false)
+        _is_master(false)
     {
         _shm_nic.attach(this, PROTO);
 
@@ -133,11 +133,6 @@ public:
             if (SharedMemoryNIC::is_gateway_process()) {
                 _socket_nic = new RawSocketNIC();
                 _socket_nic->attach(this, PROTO);
-                char* is_rsu = getenv("IS_RSU");
-                if (strcmp(is_rsu,"true") == 0){
-                    _is_rsu = true;
-                }
-                
             }
         }
 
@@ -153,9 +148,9 @@ public:
             }
     }
 
-    // pra comecar sync sptp
-    // se o addr da vm master for igual ao own_addr aqui, estamos na master, senao e slave
-    void enable_sync() {
+    // pra comecar sync sptp. is_master define o papel: true = responde a
+    // REQUEST_SYNC, false = envia REQUEST_SYNC e ajusta o relogio local
+    void enable_sync(bool is_master) {
         if constexpr (!std::is_void_v<RawSocketNIC>) {
             if (!_socket_nic) {
                 return;
@@ -164,8 +159,9 @@ public:
                 return;
             }
 
+            _is_master = is_master;
             Address own_addr(_socket_nic->address(), 0);
-            _sptp = new SPTP_Protocol<Address>(own_addr, _is_rsu, &Protocol::send);
+            _sptp = new SPTP_Protocol<Address>(own_addr, _is_master, &Protocol::send);
             _sptp->start();
         }
     }
@@ -277,7 +273,7 @@ private:
 
                 if (k == PacketKind::SPTP_SYNC || k == PacketKind::SPTP_REQUEST_SYNC) {
                     if (_sptp && (k == PacketKind::SPTP_SYNC ||
-                                  (k == PacketKind::SPTP_REQUEST_SYNC && _is_rsu))) {
+                                  (k == PacketKind::SPTP_REQUEST_SYNC && _is_master))) {
                         Address src_addr(buf->data()->src(), packet->src_port());
                         unsigned int payload_size = (buf->size() > sizeof(Header))
                                                   ? buf->size() - sizeof(Header) : 0;
@@ -344,7 +340,7 @@ private:
     SharedMemoryNIC _shm_nic;
     RawSocketNIC *_socket_nic;
     Address _address;
-    bool _is_rsu;
+    bool _is_master;
     // Channel protocols are usually singletons
     static Observed _observed;  
     static Protocol* _instance; // ponteiro pro singleton

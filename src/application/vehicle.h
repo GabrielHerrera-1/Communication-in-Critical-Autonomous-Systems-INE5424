@@ -16,7 +16,7 @@ public:
 
     typedef std::pair<Component*, Component::Port> Component_Port_Pair;
 
-    Vehicle();
+    explicit Vehicle(bool is_master = false);
     ~Vehicle();
 
     // adiciona componente (vehicle assume ownership)
@@ -38,6 +38,7 @@ private:
 
     std::vector<Component_Port_Pair> _components;
     Gateway _gateway;
+    bool _is_master;
 };
 
 #endif

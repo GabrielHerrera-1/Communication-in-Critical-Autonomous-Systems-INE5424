@@ -135,9 +135,9 @@ private:
             std::exit(1);
         }
 
-        if (message.origin().port != COMPONENT_PORT) {
+        if (message.origin().port() != COMPONENT_PORT) {
             std::cerr << "[gateway-path][vm" << _vm_id
-                      << "] porta de origem inesperada: " << message.origin().port << std::endl;
+                      << "] porta de origem inesperada: " << message.origin().port() << std::endl;
             std::exit(1);
         }
 

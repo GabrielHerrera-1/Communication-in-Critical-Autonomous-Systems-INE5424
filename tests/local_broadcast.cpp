@@ -200,7 +200,7 @@ private:
             std::exit(1);
         }
 
-        const uint16_t origin_port = inbound.origin().port;
+        const uint16_t origin_port = inbound.origin().port();
         if (!is_sender_port(origin_port)) {
             std::cerr << "[local-broadcast] " << id()
                       << " porta de origem invalida: " << origin_port << std::endl;

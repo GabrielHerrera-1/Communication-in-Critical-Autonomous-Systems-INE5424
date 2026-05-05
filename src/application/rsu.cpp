@@ -11,7 +11,7 @@ RSU::RSU() {}
 RSU::~RSU() {}
 
 void RSU::initialize() {
-    setenv("IS_RSU","true",1);
+    _gateway.set_master(true);
     _gateway.initialize();
 }
 

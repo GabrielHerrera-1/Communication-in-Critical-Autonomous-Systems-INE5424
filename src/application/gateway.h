@@ -15,6 +15,7 @@ public:
     SharedMemoryEngine::Context create_context(const uint16_t * ports,
                                                unsigned int component_count) const;
     void set_context(const SharedMemoryEngine::Context & context);
+    void set_master(bool is_master) { _is_master = is_master; }
 
     void initialize() override;
     void run() override;
@@ -23,6 +24,7 @@ public:
 
 private:
     SharedMemoryEngine::Context _context;
+    bool _is_master = false;
     std::unique_ptr<Vehicle_Protocol> _protocol;
 };
 

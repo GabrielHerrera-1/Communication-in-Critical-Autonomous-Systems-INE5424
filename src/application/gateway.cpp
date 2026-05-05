@@ -43,7 +43,7 @@ void Gateway::run() {
 
     _protocol = std::make_unique<Vehicle_Protocol>();
 
-    _protocol->enable_sync();
+    _protocol->enable_sync(_is_master);
 }
 
 void Gateway::stop() {

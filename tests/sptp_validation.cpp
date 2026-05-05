@@ -65,7 +65,10 @@ constexpr int INTER_COUNT             = 30;
 constexpr int INTER_WARMUP            = 5;     // descarta as primeiras N (sptp pode nao ter aplicado)
 constexpr int64_t THRESHOLD_INTER_US  = 15000; // 15ms (5 slaves competindo por sync, sem KVM)
 constexpr unsigned INTER_SEND_GAP_MS  = 200;
-constexpr unsigned INTER_STARTUP_S    = 10;    // espera o sptp completar pelo menos 1 sync em todos os slaves
+// 14s permite ~7 syncs por slave (com MAX_SILENCE_S=2 setado abaixo). assim
+// medimos convergencia depois da EWMA do delay e nao residuo de uma unica
+// troca, que pode ter assimetria forward/reverse atipica em qemu.
+constexpr unsigned INTER_STARTUP_S    = 14;
 
 struct IntraPayload {
     uint8_t  vm_id;
@@ -210,7 +213,7 @@ public:
             }
 
             // unicidade local: (port_origem, ts_header) deve ser unico
-            Key k{ m.origin().port, m.timestamp() };
+            Key k{ m.origin().port(), m.timestamp() };
             if (!seen.insert(k).second) {
                 std::cerr << "[sptp-val][intra-rx] duplicata: port=0x"
                           << std::hex << k.port << std::dec
@@ -338,7 +341,7 @@ public:
             int64_t recv_local_ns = Clock::now_ns();
 
             // so processamos msgs vindas do master inter (descarta intras de qq vm)
-            if (m.origin().port != Component_Ports::TEST_SPTP_VAL_INTER_MASTER) continue;
+            if (m.origin().port() != Component_Ports::TEST_SPTP_VAL_INTER_MASTER) continue;
             if (m.size() != sizeof(InterPayload)) continue;
 
             InterPayload p;
@@ -400,9 +403,15 @@ public:
 } // namespace
 
 int main() {
+    // forca cadencia alta de SPTP durante o teste (default e 15s, daria
+    // apenas 1 sync na janela de medicao). com 2s, cada slave aplica ~7
+    // syncs antes do INTER_STARTUP_S, suficiente pra EWMA do delay
+    // estabilizar e mostrar convergencia real, nao residuo de uma troca.
+    setenv("SO2_SPTP_MAX_SILENCE_S", "2", 1);
+
     const int vm_id = detect_vm_id();
 
-    Vehicle vehicle;
+    Vehicle vehicle(vm_id == MASTER_VM_ID);
     vehicle.add_component(new Intra_Sender('A', vm_id),
                           Component_Ports::TEST_SPTP_VAL_INTRA_SENDER_A);
     vehicle.add_component(new Intra_Sender('B', vm_id),
