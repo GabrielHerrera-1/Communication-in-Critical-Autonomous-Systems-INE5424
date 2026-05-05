@@ -251,7 +251,7 @@ private:
     std::atomic<int64_t>  _last_sync_steady_ns; // steady_clock na ultima aplicacao
     double  _max_silence_s;              // periodo da ressincronizacao automatica
 
-    std::atomic<bool> _running;
+    std::atomic<int>  _running;
     std::thread       _silence_worker;
     std::atomic<int>  _sync_count{0};
 };
