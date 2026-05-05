@@ -115,8 +115,8 @@ select-qemu-cpu: prepare-runtime $(BASIC_BIN) $(RUN_QEMU_TEST)
 	echo "[select-qemu-cpu] nenhuma CPU compativel funcionou; consulte $(LOG_DIR)/cpu-probes" >&2; \
 	exit 1
 
-test: test-stress
-	@echo "[test] suite de stress aprovada."
+test: test-stress test-sptp-validation
+	@echo "[test] suite completa aprovada (stress + sptp-validation)."
 
 test-basic: select-qemu-cpu $(BASIC_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario basic..."

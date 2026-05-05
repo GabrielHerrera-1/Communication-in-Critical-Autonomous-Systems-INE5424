@@ -272,8 +272,7 @@ private:
                 PacketKind k = packet->kind();
 
                 if (k == PacketKind::SPTP_SYNC || k == PacketKind::SPTP_REQUEST_SYNC) {
-                    if (_sptp && (k == PacketKind::SPTP_SYNC ||
-                                  (k == PacketKind::SPTP_REQUEST_SYNC && _is_master))) {
+                    if (_sptp) {
                         Address src_addr(buf->data()->src(), packet->src_port());
                         unsigned int payload_size = (buf->size() > sizeof(Header))
                                                   ? buf->size() - sizeof(Header) : 0;
