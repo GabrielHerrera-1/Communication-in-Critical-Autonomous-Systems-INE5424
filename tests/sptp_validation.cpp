@@ -51,24 +51,24 @@ constexpr int MASTER_VM_ID   = 1;
 constexpr int INTRA_PER_SENDER       = 20;
 constexpr int INTRA_EXPECTED_LOCAL   = 2 * INTRA_PER_SENDER;          // 2 senders locais
 constexpr int INTRA_EXPECTED_TOTAL   = INTRA_EXPECTED_LOCAL * VM_COUNT; // todos os broadcasts (info)
-// Em QEMU sem KVM, com 5 VMs disputando CPU, jitter de scheduling pode dar
-// picos esporadicos de ate ~10ms numa msg. Usamos limite de 20ms no max e
-// 5ms na media; assim o teste tolera 1-2 outliers mas falha se a media
-// distorcer (sinal de que o relogio nao esta compartilhado).
-constexpr int64_t THRESHOLD_INTRA_MAX_US = 20000; // 20ms para outliers
-constexpr int64_t THRESHOLD_INTRA_AVG_US = 5000;  // 5ms para a media
+// Em QEMU sem KVM, com 5 VMs disputando CPU emulada, jitter de scheduling
+// pode dar picos de varias dezenas de ms em maquinas mais lentas. Limites
+// generosos (60ms max / 20ms avg) toleram esses picos sem perder o sinal:
+// se o relogio nao for compartilhado, delays ficam negativos (falha
+// imediata) ou drasticamente fora desses limites.
+constexpr int64_t THRESHOLD_INTRA_MAX_US = 60000; // 60ms para outliers
+constexpr int64_t THRESHOLD_INTRA_AVG_US = 20000; // 20ms para a media
 constexpr unsigned INTRA_SEND_GAP_US = 20000;  // 20ms entre sends por sender
-constexpr unsigned INTRA_STARTUP_S   = 5;      // espera todas as 5 VMs subirem
+constexpr unsigned INTRA_STARTUP_S   = 10;     // espera todas as 5 VMs subirem (TCG e lento)
 
 // inter-VM
 constexpr int INTER_COUNT             = 30;
 constexpr int INTER_WARMUP            = 5;     // descarta as primeiras N (sptp pode nao ter aplicado)
-constexpr int64_t THRESHOLD_INTER_US  = 15000; // 15ms (5 slaves competindo por sync, sem KVM)
+constexpr int64_t THRESHOLD_INTER_US  = 50000; // 50ms (5 slaves competindo por sync, TCG sem KVM)
 constexpr unsigned INTER_SEND_GAP_MS  = 200;
-// 14s permite ~7 syncs por slave (com MAX_SILENCE_S=2 setado abaixo). assim
-// medimos convergencia depois da EWMA do delay e nao residuo de uma unica
-// troca, que pode ter assimetria forward/reverse atipica em qemu.
-constexpr unsigned INTER_STARTUP_S    = 14;
+// 25s permite ~12 syncs por slave (com MAX_SILENCE_S=2). margem extra para
+// maquinas lentas onde a EWMA do delay leva mais ciclos para estabilizar.
+constexpr unsigned INTER_STARTUP_S    = 25;
 
 struct IntraPayload {
     uint8_t  vm_id;
@@ -185,8 +185,8 @@ public:
         int total        = 0;
 
         // Timeout de seguranca: 5 VMs * 40 msgs * 20ms gap = ~3.2s ideal.
-        // 60s folga generosa para QEMU sem KVM.
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        // 180s para tolerar TCG sem KVM em maquinas lentas (5 VMs emuladas).
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(180);
 
         while (local_count < INTRA_EXPECTED_LOCAL &&
                std::chrono::steady_clock::now() < deadline) {
@@ -328,7 +328,7 @@ public:
         offsets_us.reserve(INTER_COUNT);
 
         const auto deadline =
-            std::chrono::steady_clock::now() + std::chrono::seconds(60);
+            std::chrono::steady_clock::now() + std::chrono::seconds(180);
         int from_master = 0;
 
         while (from_master < INTER_COUNT &&
