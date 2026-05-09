@@ -150,19 +150,7 @@ public:
         }
         _current_offset_ns = raw_offset;
         // TODO: rever comportamento do fetch_add
-        int count = _sync_count.fetch_add(1, std::memory_order_relaxed) + 1;
-
-        // marca no log que a sincronizacao foi aplicada. imprime sempre na
-        // primeira aplicacao e depois uma vez a cada 5 para nao poluir
-        // TODO: ver se esse print n ta adicionando tempo desnecessario
-        if (count == 1 || (count % 5) == 0) {
-            std::fprintf(stdout,
-                "[SPTP] sync #%d aplicada: offset=%lld ns delay=%lld ns\n",
-                count,
-                static_cast<long long>(raw_offset),
-                static_cast<long long>(_current_delay_ns));
-            std::fflush(stdout);
-        }
+        _sync_count.fetch_add(1, std::memory_order_relaxed);
 
         // libera o t2 guardado; proximo request produzira um novo
         _pending_t2_ns.store(0, std::memory_order_release);

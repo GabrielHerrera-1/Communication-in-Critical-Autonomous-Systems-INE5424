@@ -31,8 +31,6 @@ int RSU::run_gateway_process() {
 
     _gateway.run();
 
-    std::cout << "[RSU] antena/master PTP rodando. aguardando slaves." << std::endl;
-
     // Mantem o processo vivo para que as threads de fundo do Protocol
     // (SHM recv, raw socket recv, SPTP) continuem atendendo slaves.
     while (true) {
@@ -57,10 +55,4 @@ void RSU::run() {
     int status = 0;
     waitpid(pid, &status, 0);
 
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        std::cerr << "[RSU] encerrado com falha." << std::endl;
-        std::exit(1);
-    }
-
-    std::cout << "[RSU] encerrado." << std::endl;
 }
