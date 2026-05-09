@@ -32,7 +32,10 @@ template <typename Address>
 class SPTP_Protocol {
 public:
     // ponteiro pra send do protocol. justamente pra evitar dependencia circular.
-    using SendFn = int(*)(Address from, Address to, const void* data, unsigned int size, int64_t ts, PacketKind kind);
+    // tx_ts_out: capturado dentro do Protocol::send_via_nic logo antes de
+    // nic->send(buf). Usado pelo REQUEST_SYNC pra marcar t2 com simetria
+    // em relacao a t1 (gravado no mesmo ponto, do lado master)
+    using SendFn = int(*)(Address from, Address to, const void* data, unsigned int size, int64_t ts, PacketKind kind, int64_t * tx_ts_out);
 
     SPTP_Protocol(Address own_addr, bool is_master, SendFn send_fn)
         : _own_addr(own_addr),
@@ -65,6 +68,17 @@ public:
             using namespace std::chrono;
             auto sleep_for = duration<double>(_max_silence_s);
             while (_running.load(std::memory_order_acquire)) {
+                if (!_first_sync_done.load(std::memory_order_acquire)) {
+                    // retry rapido enquanto ainda nao houve sincronizacao
+                    // valida
+                    std::this_thread::sleep_for(milliseconds(Cfg::INITIAL_RETRY_MS));
+                    if (_running.load(std::memory_order_acquire)
+                        && !_first_sync_done.load(std::memory_order_acquire)) {
+                        send_sync_request();
+                    }
+                    continue;
+                }
+
                 std::this_thread::sleep_for(sleep_for);
 
                 int64_t now  = steady_now_ns();
@@ -133,8 +147,6 @@ public:
         int64_t raw_offset = ((t1_prime - t1) - (t2_prime - t2)) / 2;
         int64_t raw_delay  = ((t1_prime - t1) + (t2_prime - t2)) / 2;
 
-        _last_sync_steady_ns.store(steady_now_ns(), std::memory_order_release);
-
         // EWMA sobre o delay medido
         // serve pra basicamente preservar boa parte do valor antigo, incorporando um pouco da medicao nova. delay mais estavel 
         if (raw_delay > 0) {
@@ -144,7 +156,18 @@ public:
         }
 
         int64_t abs_offset = std::llabs(raw_offset);
-        if (abs_offset > Cfg::MIN_OFFSET_NS && abs_offset < Cfg::MAX_OFFSET_NS) {
+        if (abs_offset >= Cfg::MAX_OFFSET_NS) {
+            // outlier: nao marca como sincronizado, watchdog continua tentando
+            _pending_t2_ns.store(0, std::memory_order_release);
+            return;
+        }
+
+        // chegou aqui = medicao aceita (aplicada se acima de MIN_OFFSET, ou
+        // ja-em-sync se abaixo). marca progresso pro watchdog em ambos
+        _last_sync_steady_ns.store(steady_now_ns(), std::memory_order_release);
+        _first_sync_done.store(true, std::memory_order_release);
+
+        if (abs_offset > Cfg::MIN_OFFSET_NS) {
             // aqui a gente cancela o erro. le clock realtime, soma esse delta e reescreve o relogio com clock settime
             adjust_clock_jump(-raw_offset);
         }
@@ -199,15 +222,20 @@ private:
 
     void send_sync_request() {
         uint32_t seq = _next_seq.fetch_add(1, std::memory_order_relaxed);
-        int64_t t2 = Clock::now_ns();
-        _pending_t2_ns.store(t2, std::memory_order_release);
+        // armazena fallback de t2 (early) ANTES do _send pra cobrir a race em
+        // que a SYNC volte do master entre _send retornar e o store final.
+        _pending_t2_ns.store(Clock::now_ns(), std::memory_order_release);
         _pending_seq.store(seq, std::memory_order_release);
         Request_Payload p{ seq };
+        int64_t tx_ts = 0;
         // ts = 0: deixa o Protocol carimbar com now_ns na saida da NIC. O
-        // valor que vai no Header e ignorado pelo master, so existe pra
-        // cumprir o formato PTP = {address, timestamp, ptp_frame}. TODO: ver se é necessario ter ts aq memso, se for, acho q devemos usar o monotonic aq
+        // mesmo now_ns retorna em tx_ts e e usado como t2 (simetrico a t1
+        // no lado master).
         _send(_own_addr, Address::physical_broadcast(Component_Ports::PTP), &p, sizeof(p), 0,
-              PacketKind::SPTP_REQUEST_SYNC);
+              PacketKind::SPTP_REQUEST_SYNC, &tx_ts);
+        if (tx_ts != 0) {
+            _pending_t2_ns.store(tx_ts, std::memory_order_release);
+        }
     }
 
     void send_sync_reply(Address to, uint32_t seq_id, int64_t t2_prime) {
@@ -216,7 +244,7 @@ private:
         p.t2_prime = t2_prime;
         // passa ts = 0 para que o Protocol meca t1 com now_ns no ponto mais
         // proximo da NIC. O slave lera esse t1 do Header.timestamp.
-        _send(_own_addr, to, &p, sizeof(p), 0, PacketKind::SPTP_SYNC);
+        _send(_own_addr, to, &p, sizeof(p), 0, PacketKind::SPTP_SYNC, nullptr);
     }
 
     // steady_clock em ns desde o epoch do proprio steady_clock. Usado pelo
@@ -242,6 +270,8 @@ private:
     std::atomic<int>  _running;
     std::thread       _silence_worker;
     std::atomic<int>  _sync_count{0};
+    // sinaliza para o watchdog que ja houve pelo menos uma medicao nao-outlier
+    std::atomic<bool> _first_sync_done{false};
 };
 
 #endif

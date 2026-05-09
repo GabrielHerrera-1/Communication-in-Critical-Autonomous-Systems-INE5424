@@ -60,6 +60,8 @@ template <typename Address> struct Traits<SPTP_Protocol<Address>> {
 
     // palpite inicial de delay, refinado em cada round-trip.
     static constexpr int64_t INITIAL_DELAY_NS = 100'000;     // 100us
+
+    static constexpr unsigned INITIAL_RETRY_MS = 250;
 };
 
 // parametros default de SCHED_DEADLINE para componentes do veiculo.

@@ -176,8 +176,10 @@ public:
         }
     }
     
-    // TODO: mudei a assinatura do send e do receive, ver se ta ok
-    static int send(Address from, Address to, const void *data, unsigned int size, int64_t ts = 0, PacketKind kind = PacketKind::DATA) {
+    // tx_ts_out: se nao-nulo, recebe o now_ns() capturado o mais perto possivel
+    // de nic->send(). usado pela sptp pra marcar t2 com simetria em relacao a t1
+    // (que ja e gravado nesse mesmo ponto, dentro de send_via_nic).
+    static int send(Address from, Address to, const void *data, unsigned int size, int64_t ts = 0, PacketKind kind = PacketKind::DATA, int64_t * tx_ts_out = nullptr) {
         if (!_instance) return -1;
 
         // decidimos que só os componentes de fato podem mandar mensagens, então isso aqui seria desnecessário
@@ -185,11 +187,11 @@ public:
         // a decisão de roteamento é feita no update do gateway
         if constexpr (!std::is_void_v<RawSocketNIC>){
             if (_instance->_socket_nic && !to.is_internal()) {
-                return send_via_nic(_instance->_socket_nic, from, to, data, size, ts, kind);
+                return send_via_nic(_instance->_socket_nic, from, to, data, size, ts, kind, tx_ts_out);
             }
         }
         // se não usa shm
-        return send_via_nic(&_instance->_shm_nic, from, to, data, size, ts, kind);
+        return send_via_nic(&_instance->_shm_nic, from, to, data, size, ts, kind, tx_ts_out);
 
     };
 
@@ -314,9 +316,10 @@ private:
         }
     }
 
-    // TODO: tudo bem o sync ser unicast?
+    // tx_ts_out: se nao-nulo, recebe o now_ns() usado pra marcar o packet header
+    // garante simetria com a recepcao (que tambem usa now_ns no on_receive)
     template<typename NICType>
-    static int send_via_nic(NICType *nic, Address from, Address to, const void *data, unsigned int size, int64_t ts, PacketKind kind) {
+    static int send_via_nic(NICType *nic, Address from, Address to, const void *data, unsigned int size, int64_t ts, PacketKind kind, int64_t * tx_ts_out = nullptr) {
         Physical_Address physical_dst = to.paddr();
 
         Buffer *buf = nic->alloc(physical_dst, PROTO, sizeof(Header) + size);
@@ -330,7 +333,9 @@ private:
         if (data && size)
             memcpy(packet->template data<unsigned char>(), data, size);
         // TODO: monotonic_stamp sera?
-        packet->timestamp(ts != 0 ? ts : Clock::now_ns());
+        int64_t now = Clock::now_ns();
+        packet->timestamp(ts != 0 ? ts : now);
+        if (tx_ts_out) *tx_ts_out = now;
         return nic->send(buf);
     }
 

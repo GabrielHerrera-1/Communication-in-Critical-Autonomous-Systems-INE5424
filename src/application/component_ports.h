@@ -20,36 +20,15 @@ public:
     // Reservamos uma faixa alta para cenarios de teste para nao misturar
     // trafego de validacao com IDs de componentes reais do veiculo.
     static constexpr Port TEST_MESH = 0xF001;
-    static constexpr Port TEST_GATEWAY_PATH = 0xF002;
     static constexpr Port TEST_RTT = 0xF003;
     static constexpr Port TEST_RTT_INTRA_INITIATOR = 0xF004;
     static constexpr Port TEST_RTT_INTRA_RESPONDER = 0xF005;
-    static constexpr Port TEST_LOCAL_BROADCAST_BASIC_SENDER = 0xF101;
-    static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_A = 0xF102;
-    static constexpr Port TEST_LOCAL_BROADCAST_BASIC_RECEIVER_B = 0xF103;
-    static constexpr Port TEST_LOCAL_BROADCAST_A = 0xF201;
-    static constexpr Port TEST_LOCAL_BROADCAST_B = 0xF202;
-    static constexpr Port TEST_LOCAL_BROADCAST_C = 0xF203;
-    static constexpr Port TEST_LOCAL_BROADCAST_D = 0xF204;
-    static constexpr Port TEST_LOCAL_BROADCAST_E = 0xF205;
     static constexpr Port TEST_STRESS_SENDER = 0xF301;
     static constexpr Port TEST_STRESS_LISTENER = 0xF302;
-
-    // TODO: limpar isso aqui
-    static constexpr Port TEST_TIMESTAMP_SENDER   = 0xF401;
-    static constexpr Port TEST_TIMESTAMP_RECEIVER = 0xF402;
-    static constexpr Port TEST_SPTP_SYNC          = 0xF403;
-    static constexpr Port TEST_DRIFT              = 0xF404;
     static constexpr Port TEST_SPTP_DRIFT         = 0xF404;
-    static constexpr Port TEST_ANTENNA            = 0xF405;
-    static constexpr Port TEST_DEADLINE           = 0xF406;
-    static constexpr Port PTP                     = 0xf407;
-
-    static constexpr Port TEST_SPTP_VAL_INTRA_SENDER_A = 0xF410;
-    static constexpr Port TEST_SPTP_VAL_INTRA_SENDER_B = 0xF411;
-    static constexpr Port TEST_SPTP_VAL_INTRA_RECEIVER = 0xF412;
-    static constexpr Port TEST_SPTP_VAL_INTER_MASTER   = 0xF413;
-    static constexpr Port TEST_SPTP_VAL_INTER_SLAVE    = 0xF414;
+    static constexpr Port PTP                     = 0xF407;
+    static constexpr Port TEST_SPTP_SIMPLE_SENDER   = 0xF420;
+    static constexpr Port TEST_SPTP_SIMPLE_RECEIVER = 0xF421;
 };
 
 #endif

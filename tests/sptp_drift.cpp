@@ -164,7 +164,8 @@ int main() {
 
     const int vm_id = detect_vm_id();
 
-    Vehicle vehicle;
+
+    Vehicle vehicle(vm_id == MASTER_VM_ID);
     if (vm_id == MASTER_VM_ID) {
         vehicle.add_component(new Drift_Master(), Component_Ports::TEST_SPTP_DRIFT);
     } else {
