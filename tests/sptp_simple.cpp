@@ -1,3 +1,4 @@
+#include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
 #include "../src/communication/message.h"
@@ -14,9 +15,10 @@
 #include <vector>
 
 // sptp-simple: roda a pilha padrao (Communicator -> Vehicle_Protocol -> NIC ->
-// engines) em 5 VMs e exercita a SPTP. VM1 e master no SPTP e envia mensagens
-// de teste; VMs 2-5 sao slaves e medem o offset entre o relogio local e o
-// timestamp da mensagem do master para cada pacote recebido.
+// engines) em 5 VMs e exercita a SPTP.
+//   vm1 = RSU dedicada (master SPTP, sem componentes de aplicacao)
+//   vm2 = Vehicle slave + Sender (transmite as mensagens de teste)
+//   vm3-5 = Vehicle slave + Receiver (medem offset por pacote recebido)
 //
 // delta_us = slave_realtime_at_recv - master_realtime_at_send (em us)
 //          = delay_propagacao + offset_residual_pos_sync + drift_acumulado
@@ -24,7 +26,8 @@
 namespace {
 
 static const int VM_COUNT          = 5;
-static const int MASTER_VM_ID      = 1;
+static const int RSU_VM_ID         = 1;
+static const int SENDER_VM_ID      = 2;
 static const int STARTUP_DELAY_S   = 5;     // tempo pra slaves subirem o gateway e SPTP convergir
 static const int MASTER_SEND_COUNT = 30;    // ~15s de envio
 static const int SLAVE_RECV_TARGET = 25;
@@ -72,6 +75,17 @@ public:
 
     bool subscribe_logical_broadcast() const override { return false; }
 
+    // SCHED_DEADLINE: sender envia 1 mensagem a cada 500ms, runtime de 20ms
+    // por periodo (folga ~20x sobre o trabalho real ~1ms; cobre maquinas
+    // significativamente mais lentas que a nossa sem risco de throttle).
+    // period = deadline = 500ms casa com o ritmo natural de envio do teste.
+    RT_Profile rt_profile() const override {
+        RT_Profile p;
+        p.policy = RT_Profile::Policy::DEADLINE;
+        p.deadline = { 20'000'000ULL, 500'000'000ULL, 500'000'000ULL };
+        return p;
+    }
+
     void run() override {
         if (!_communicator) {
             std::cerr << "[" << LABEL << "][master] communicator ausente" << std::endl;
@@ -109,6 +123,17 @@ public:
 
     Port logical_port() const override {
         return Component_Ports::TEST_SPTP_SIMPLE_RECEIVER;
+    }
+
+    // SCHED_DEADLINE: receiver consome 1 mensagem a cada ~500ms (ritmo do
+    // sender). period em 500ms casa. runtime 20ms da folga ~20x sobre o
+    // trabalho real (sem_wait wakeup + clock_gettime + push no vector +
+    // printf), cobre maquinas mais lentas sem throttle.
+    RT_Profile rt_profile() const override {
+        RT_Profile p;
+        p.policy = RT_Profile::Policy::DEADLINE;
+        p.deadline = { 20'000'000ULL, 500'000'000ULL, 500'000'000ULL };
+        return p;
     }
 
     void run() override {
@@ -174,10 +199,21 @@ private:
 
 int main() {
     const int vm_id = detect_vm_id();
-    const bool is_master = (vm_id == MASTER_VM_ID);
 
-    Vehicle vehicle(is_master);
-    if (is_master) {
+    if (vm_id == RSU_VM_ID) {
+        // VM dedicada como master SPTP. Nao roda Vehicle nem componentes:
+        // so sobe o gateway com set_master(true) e mantem viva pra responder
+        // REQUEST_SYNC dos demais. Imprime "cenario validado." pelo proprio
+        // RSU::run_gateway_process pra o test runner reconhecer sucesso
+        RSU rsu;
+        rsu.initialize();
+        rsu.run();
+        return 0;
+    }
+
+    // demais VMs entram como slaves SPTP (is_master = false).
+    Vehicle vehicle(false);
+    if (vm_id == SENDER_VM_ID) {
         vehicle.add_component(new Sender(),
                               Component_Ports::TEST_SPTP_SIMPLE_SENDER);
     } else {

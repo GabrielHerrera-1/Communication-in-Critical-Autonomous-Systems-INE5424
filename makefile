@@ -124,8 +124,8 @@ test-mesh-concurrent: select-qemu-cpu $(MESH_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] cenario mesh-concurrent aprovado."
 
 test-sptp-drift: select-qemu-cpu $(SPTP_DRIFT_BIN) $(RUN_QEMU_TEST)
-	@echo "[test] rodando cenario sptp-drift (2 VMs, ~70s)..."
-	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_DRIFT_BIN)" 2 sptp-drift "cenario validado."
+	@echo "[test] rodando cenario sptp-drift (3 VMs: RSU + master + slave, ~70s)..."
+	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_DRIFT_BIN)" 3 sptp-drift "cenario validado."
 	@echo
 	@echo "===== logs sptp-drift ====="
 	@for f in $(LOG_DIR)/sptp-drift/latest/logs/vm*.log; do \
@@ -136,7 +136,7 @@ test-sptp-drift: select-qemu-cpu $(SPTP_DRIFT_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] cenario sptp-drift aprovado."
 
 test-sptp-simple: select-qemu-cpu $(SPTP_SIMPLE_BIN) $(RUN_QEMU_TEST)
-	@echo "[test] rodando cenario sptp-simple (5 VMs)..."
+	@echo "[test] rodando cenario sptp-simple (5 VMs: RSU + sender + 3 receivers)..."
 	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_SIMPLE_BIN)" 5 sptp-simple "cenario validado."
 	@echo
 	@echo "===== logs sptp-simple ====="

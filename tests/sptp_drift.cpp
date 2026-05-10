@@ -1,3 +1,4 @@
+#include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
 #include "../src/communication/message.h"
@@ -19,25 +20,29 @@
 // tempo de validade).
 //
 // Setup:
-//   - 2 VMs: VM1 = master, VM2 = slave.
+//   - 3 VMs: VM1 = RSU dedicada (master SPTP), VM2 = Drift_Master (transmite
+//     as mensagens de teste), VM3 = Drift_Slave (mede o drift relativo).
+//     VM2 e VM3 sao slaves SPTP; ambas sincronizam com a RSU no boot.
 //   - SO2_SPTP_MAX_SILENCE_S = 3600 antes do fork do gateway,
 //     logo o slave so realiza a SYNC inicial (disparada em start())
 //     e nao pede ressync durante o teste. Isso isola o drift puro
 //     do quartz das VMs.
-//   - Master envia N mensagens espacadas por SEND_INTERVAL_MS.
-//   - Slave descarta as primeiras WARMUP mensagens (enquanto a
+//   - VM2 envia N mensagens espacadas por SEND_INTERVAL_MS.
+//   - VM3 descarta as primeiras WARMUP mensagens (enquanto a
 //     primeira SYNC ainda esta se propagando) e toma a proxima
 //     como baseline. Pra cada amostra seguinte imprime:
 //        t_rel_s, raw_offset_us, drift_us = raw_offset - baseline
 //
-// raw_offset = (relogio_slave - relogio_master) + delay_rede.
+// raw_offset = (relogio_slave - relogio_transmissor) + delay_rede.
 // Como delay_rede e ~constante, drift = raw_offset(t) - raw_offset(0)
-// isola a componente de relogio.
+// isola a componente de relogio (drift entre os osciladores das duas VMs
+// nao-RSU).
 
 namespace {
 
-static const int VM_COUNT         = 2;
-static const int MASTER_VM_ID     = 1;
+static const int VM_COUNT         = 3;
+static const int RSU_VM_ID        = 1;
+static const int MASTER_VM_ID     = 2;   // transmissor das mensagens de teste
 static const int MESSAGE_COUNT    = 120;
 static const int SEND_INTERVAL_MS = 500;   // 60s de observacao
 static const int WARMUP_DISCARD   = 3;     // espera sync inicial estabilizar
@@ -87,6 +92,16 @@ public:
 
     bool subscribe_logical_broadcast() const override { return false; }
     Port logical_port() const override { return Component_Ports::TEST_SPTP_DRIFT; }
+
+    // SCHED_DEADLINE: 1 envio a cada SEND_INTERVAL_MS (500ms). period casa
+    // com o intervalo natural. Runtime 20ms da folga ~20x sobre o trabalho
+    // real (snprintf+send+log), cobre maquinas mais lentas.
+    RT_Profile rt_profile() const override {
+        RT_Profile p;
+        p.policy = RT_Profile::Policy::DEADLINE;
+        p.deadline = { 20'000'000ULL, 500'000'000ULL, 500'000'000ULL };
+        return p;
+    }
 };
 
 class Drift_Slave : public Component {
@@ -154,6 +169,15 @@ public:
     }
 
     Port logical_port() const override { return Component_Ports::TEST_SPTP_DRIFT; }
+
+    // SCHED_DEADLINE: 1 mensagem chega a cada ~500ms (ritmo do drift-master).
+    // Runtime 20ms da folga ~20x; cobre maquinas mais lentas.
+    RT_Profile rt_profile() const override {
+        RT_Profile p;
+        p.policy = RT_Profile::Policy::DEADLINE;
+        p.deadline = { 20'000'000ULL, 500'000'000ULL, 500'000'000ULL };
+        return p;
+    }
 };
 
 } // namespace
@@ -164,8 +188,17 @@ int main() {
 
     const int vm_id = detect_vm_id();
 
+    if (vm_id == RSU_VM_ID) {
+        // master SPTP dedicado, sem componentes de aplicacao. responde
+        // REQUEST_SYNC dos demais e fica vivo durante todo o teste.
+        RSU rsu;
+        rsu.initialize();
+        rsu.run();
+        return 0;
+    }
 
-    Vehicle vehicle(vm_id == MASTER_VM_ID);
+    // VM2 (transmissor) e VM3 (slave de medicao) sao ambas slaves SPTP
+    Vehicle vehicle(false);
     if (vm_id == MASTER_VM_ID) {
         vehicle.add_component(new Drift_Master(), Component_Ports::TEST_SPTP_DRIFT);
     } else {

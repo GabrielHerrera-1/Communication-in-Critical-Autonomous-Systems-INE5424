@@ -74,6 +74,13 @@ public:
         return Component_Ports::TEST_RTT_INTRA_INITIATOR;
     }
 
+    RT_Profile rt_profile() const override {
+        RT_Profile p;
+        p.policy = RT_Profile::Policy::DEADLINE;
+        p.deadline = { 4'000'000ULL, 5'000'000ULL, 5'000'000ULL };
+        return p;
+    }
+
     void run() override {
         if (!_communicator) {
             std::cerr << "[rtt-intra][initiator] communicator ausente" << std::endl;
@@ -145,9 +152,9 @@ private:
             std::exit(1);
         }
 
-        if (message.origin().port != expected_origin_port) {
+        if (message.origin().port() != expected_origin_port) {
             std::cerr << "[rtt-intra][initiator] porta de origem inesperada: "
-                      << message.origin().port << std::endl;
+                      << message.origin().port() << std::endl;
             std::exit(1);
         }
 
@@ -197,6 +204,14 @@ public:
         return Component_Ports::TEST_RTT_INTRA_RESPONDER;
     }
 
+
+    RT_Profile rt_profile() const override {
+        RT_Profile p;
+        p.policy = RT_Profile::Policy::DEADLINE;
+        p.deadline = { 4'000'000ULL, 5'000'000ULL, 5'000'000ULL };
+        return p;
+    }
+
     void run() override {
         if (!_communicator) {
             std::cerr << "[rtt-intra][responder] communicator ausente" << std::endl;
@@ -229,9 +244,9 @@ public:
                 std::exit(1);
             }
 
-            if (message.origin().port != Component_Ports::TEST_RTT_INTRA_INITIATOR) {
+            if (message.origin().port() != Component_Ports::TEST_RTT_INTRA_INITIATOR) {
                 std::cerr << "[rtt-intra][responder] porta de origem inesperada: "
-                          << message.origin().port << std::endl;
+                          << message.origin().port() << std::endl;
                 std::exit(1);
             }
 

@@ -162,6 +162,18 @@ public:
         return Component_Ports::TEST_RTT;
     }
 
+    // SCHED_DEADLINE: cada iteracao toma RTT (~5ms) + usleep(200ms) ~= 205ms.
+    // Period precisa ser > 205ms pra a thread nao perder slots; usamos
+    // 300ms com folga. Runtime 100ms (~20x o RTT real) absorve maquinas mais
+    // lentas e jitter de boot sem risco de throttle. Utilizacao por VM =
+    // 100/300 ~= 33%, bem abaixo do orcamento RT do kernel (95%)
+    RT_Profile rt_profile() const override {
+        RT_Profile p;
+        p.policy = RT_Profile::Policy::DEADLINE;
+        p.deadline = { 100'000'000ULL, 300'000'000ULL, 300'000'000ULL };
+        return p;
+    }
+
     void run() override {
         if (!_communicator) {
             std::cerr << "[" << _config.label << "][vm" << _vm_id

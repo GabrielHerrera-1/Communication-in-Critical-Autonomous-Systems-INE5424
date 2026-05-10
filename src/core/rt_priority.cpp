@@ -17,6 +17,8 @@ namespace {
 
 constexpr int SCHED_POLICY_DEADLINE = 6;
 
+constexpr uint64_t SCHED_FLAG_RESET_ON_FORK_LOCAL = 0x01ULL;
+
 struct Sched_Attr {
     uint32_t size;
     uint32_t sched_policy;
@@ -114,6 +116,7 @@ bool set_current_thread_deadline(const Deadline_Params & params, const char * ro
     Sched_Attr attr = {};
     attr.size = sizeof(attr);
     attr.sched_policy   = SCHED_POLICY_DEADLINE;
+    attr.sched_flags    = SCHED_FLAG_RESET_ON_FORK_LOCAL;
     attr.sched_runtime  = params.runtime_ns;
     attr.sched_deadline = params.deadline_ns;
     attr.sched_period   = params.period_ns;
@@ -140,6 +143,15 @@ bool set_current_thread_deadline(const Deadline_Params & params, const char * ro
         return false;
     }
 
+    // marca evidencia no log: facilita confirmar nos artefatos do teste que o
+    // componente de fato rodou sob SCHED_DEADLINE (e nao no fallback FIFO)
+    std::fprintf(stdout,
+                 "[RT_Priority] SCHED_DEADLINE ativo para %s: runtime=%lluns deadline=%lluns period=%lluns\n",
+                 role ? role : "thread atual",
+                 static_cast<unsigned long long>(params.runtime_ns),
+                 static_cast<unsigned long long>(params.deadline_ns),
+                 static_cast<unsigned long long>(params.period_ns));
+    std::fflush(stdout);
     return true;
 #endif
 }

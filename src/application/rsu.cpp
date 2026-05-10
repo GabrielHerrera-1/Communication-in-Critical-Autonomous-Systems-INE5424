@@ -31,6 +31,8 @@ int RSU::run_gateway_process() {
 
     _gateway.run();
 
+    std::cout << "[RSU] master SPTP pronto. cenario validado." << std::endl;
+
     // Mantem o processo vivo para que as threads de fundo do Protocol
     // (SHM recv, raw socket recv, SPTP) continuem atendendo slaves.
     while (true) {
