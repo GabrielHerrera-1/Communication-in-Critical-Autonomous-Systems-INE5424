@@ -25,7 +25,6 @@
 //   offset = ((t1' - t1) - (t2' - t2)) / 2
 //   delay  = ((t1' - t1) + (t2' - t2)) / 2
 //
-// TODO: verificar se o unicast ta de boa pra sptp
 
 // se n fosse assim teriamos dependencia circular
 template <typename Address>
@@ -231,7 +230,7 @@ private:
         // ts = 0: deixa o Protocol carimbar com now_ns na saida da NIC. O
         // mesmo now_ns retorna em tx_ts e e usado como t2 (simetrico a t1
         // no lado master).
-        _send(_own_addr, Address::physical_broadcast(Component_Ports::PTP), &p, sizeof(p), 0,
+        _send(_own_addr, Address::physical_broadcast(Component_Ports::GATEWAY), &p, sizeof(p), 0,
               PacketKind::SPTP_REQUEST_SYNC, &tx_ts);
         if (tx_ts != 0) {
             _pending_t2_ns.store(tx_ts, std::memory_order_release);
