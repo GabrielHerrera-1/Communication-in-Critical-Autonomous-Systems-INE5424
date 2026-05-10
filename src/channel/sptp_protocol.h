@@ -108,11 +108,12 @@ public:
             if (kind == PacketKind::SPTP_REQUEST_SYNC) {
                 if (payload_size < sizeof(Request_Payload)) return;
 
+                // marca t2' o mais cedo possivel
+                int64_t t2_prime = Clock::now_ns();
+
                 Request_Payload req;
                 std::memcpy(&req, payload, sizeof(req));
 
-                // marca t2' o mais cedo possivel
-                int64_t t2_prime = Clock::now_ns();
                 send_sync_reply(sender_addr, req.seq_id, t2_prime);
             }
             return;
