@@ -31,6 +31,7 @@ endif
 ifeq ($(origin AR), undefined)
 AR := $(CROSS_COMPILE)ar
 endif
+CXXSTD := -std=c++17
 CXXFLAGS ?= -static -I$(SRC_DIR) -MMD -MP
 LDFLAGS ?=
 
@@ -203,7 +204,7 @@ logs:
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	@printf '  CXX  %s\n' "$<"
-	@$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) $(CXXSTD) -c $< -o $@
 
 # pega todos os .o gerados de src/ e empacota num único arquivo .a (biblioteca estática)
 # o .a é um arquivo que agrupa código compilado pra ser linkado por outros programas
@@ -223,7 +224,7 @@ $(STATIC_LIB): $(OBJS)
 $(BIN_DIR)/%: $(TEST_DIR)/%.cpp $(STATIC_LIB)
 	@mkdir -p "$(dir $@)"
 	@printf '  LD   %s\n' "$@"
-	@$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -l$(LIB_NAME) $(LDFLAGS) -o $@
+	@$(CXX) $(CXXFLAGS) $(CXXSTD) $< -L$(LIB_DIR) -l$(LIB_NAME) $(LDFLAGS) -o $@
 
 clean:
 	rm -rf "$(BUILD_DIR)"

@@ -14,20 +14,6 @@
 #include <unistd.h>
 #include <vector>
 
-// sptp-simple: roda a pilha padrao (Communicator -> Vehicle_Protocol -> NIC ->
-// engines) em 6 VMs e exercita a SPTP.
-//   vm1     = RSU dedicada (master SPTP, sem componentes de aplicacao)
-//   vm2,vm3 = Vehicle slave + Sender (2 transmissores defasados em 250ms)
-//   vm4-vm6 = Vehicle slave + Receiver (medem offset por sender)
-//
-// os dois senders transmitem em paralelo com 250ms de defasagem dentro do
-// ciclo de 500ms. com isso, receivers veem mensagens de origens distintas
-// em timestamps proximos, validando a "inequivoca identificacao das
-// mensagens atraves do endereco de origem em combinacao com o timestamp"
-// exigida pela etapa 3 do enunciado.
-//
-// delta_us = slave_realtime_at_recv - sender_realtime_at_send (em us)
-//          = delay_propagacao + offset_residual_pos_sync + drift_acumulado
 
 namespace {
 
@@ -40,10 +26,6 @@ static const int MASTER_SEND_COUNT    = 30;
 static const int SLAVE_RECV_TARGET    = 25;
 static const unsigned int SEND_INTERVAL_MS = 500;
 
-// limiar de qualidade do SPTP: se avg_abs > este valor, o teste falha.
-// 50ms e folgado o suficiente para absorver jitter do QEMU mas detecta
-// regressoes graves (ex.: rodar sem RT priority leva offset a centenas
-// de ms, como observado empiricamente).
 static const int64_t MAX_OFFSET_US = 50'000;
 
 static const char LABEL[] = "sptp-simple";
@@ -97,9 +79,6 @@ public:
 
         sleep(STARTUP_DELAY_S);
 
-        // sender B comeca 250ms apos sender A: em cada ciclo de 500ms ha duas
-        // mensagens com (origin, timestamp) distintos enviadas em momentos
-        // proximos, demonstrando a identificacao inequivoca da etapa 3.
         if (_vm_id == SENDER_B_VM_ID) {
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
         }
@@ -119,9 +98,6 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(SEND_INTERVAL_MS));
         }
 
-        // sentinela de fim de transmissao: envia 3x para tolerar perda de pacote
-        // no raw socket sob contencao. permite ao receiver sair do loop mesmo
-        // se algumas mensagens regulares se perderam.
         for (int i = 0; i < 3; ++i) {
             char done_payload[48];
             std::snprintf(done_payload, sizeof(done_payload), "%s:vm%d:done", LABEL, _vm_id);
@@ -168,9 +144,6 @@ public:
         bool sender_a_done = false;
         bool sender_b_done = false;
 
-        // termina quando ambos os senders sinalizaram fim OU ambos os buckets
-        // encheram, o que vier primeiro. evita deadlock se algumas mensagens
-        // regulares se perderem no raw socket sob contencao.
         auto done_with_a = [&]() {
             return sender_a_done || deltas_a.size() >= target_per_sender;
         };
@@ -192,10 +165,6 @@ public:
 
             const char * payload = reinterpret_cast<const char *>(m.data());
 
-            // payload pode ser "sptp-simple:vmN:done" ou "sptp-simple:vmN:seq".
-            // parseamos o "tail" como string e decidimos depois - sscanf com
-            // ":done" no formato nao funciona porque ele retorna 1 ja na
-            // conversao do %d, antes de validar o sufixo.
             int sender_vm = 0;
             char tail[16];
             if (std::sscanf(payload, "sptp-simple:vm%d:%15s", &sender_vm, tail) != 2) {
@@ -231,8 +200,6 @@ public:
                       << " delta_us=" << delta_us << std::endl;
         }
 
-        // amostras minimas para que a estatistica seja significativa.
-        // se ficou abaixo disso, perdeu pacotes demais e o teste falha.
         const std::size_t MIN_SAMPLES = 10;
         if (deltas_a.size() < MIN_SAMPLES || deltas_b.size() < MIN_SAMPLES) {
             std::cerr << "[" << LABEL << "][vm" << _vm_id
@@ -267,7 +234,7 @@ public:
         const int64_t worst = std::max(avg_a, avg_b);
 
         // assercao de qualidade: a precisao da sync precisa ser suficiente para
-        // que (origin, timestamp) identifique inequivocamente cada mensagem.
+        // que (origin, timestamp) identifique inequivocamente cada mensagem
         if (worst > MAX_OFFSET_US) {
             std::cerr << "[" << LABEL << "][vm" << _vm_id
                       << "] FAIL avg_abs_us=" << worst
@@ -283,7 +250,7 @@ private:
     int _vm_id;
 };
 
-} // namespace
+}
 
 int main() {
     const int vm_id = detect_vm_id();
