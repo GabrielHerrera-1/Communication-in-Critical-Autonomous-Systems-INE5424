@@ -8,6 +8,10 @@
 class Message {
 public:
 
+    // acessa os campos privados pra escreve nos campos readonly do usuário
+    template <typename Channel>
+    friend class Communicator;
+
     static const unsigned int MAX_SIZE = 1400;
 
     Message() : _origin(), _timestamp(0), _size(MAX_SIZE) {
@@ -44,16 +48,8 @@ public:
         return _origin;
     }
 
-    void origin(const Vehicle_Protocol::Address & o) {
-        _origin = o;
-    }
-
     int64_t timestamp() const {
         return _timestamp;
-    }
-
-    void timestamp(int64_t ts) {
-        _timestamp = ts;
     }
 
 private:

@@ -39,10 +39,10 @@ public:
 
     // TODO: tirei o const pra colocar o timestamp aqui, ver se é necessario msm
     bool send(Message * message) {
-        message->timestamp(Clock::monotonic_stamp());
+        message->_timestamp = Clock::monotonic_stamp();
         return (_channel->send(_address, Address::logical_broadcast(),
                                message->data(), message->size(),
-                               message->timestamp()) > 0);
+                               message->_timestamp) > 0);
     }
 
     bool receive(Message * message) {
@@ -56,9 +56,9 @@ public:
         typename Channel::Address from;
         int64_t ts = 0;
         int size = _channel->receive(buf, &from, &ts, message->data(), message->size());
-        message->size(size);
-        message->origin(from);
-        message->timestamp(ts);
+        message->_size = size;
+        message->_origin = from;
+        message->_timestamp = ts;
 
         if (size <= 0)
             return false;
