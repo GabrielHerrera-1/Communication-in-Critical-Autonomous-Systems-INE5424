@@ -58,7 +58,7 @@ STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple measure-rtt measure-rtt-intra measure-rtt-10 logs clean
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -109,9 +109,18 @@ select-qemu-cpu: prepare-runtime $(BASIC_BIN) $(RUN_QEMU_TEST)
 	echo "[select-qemu-cpu] nenhuma CPU compativel funcionou; consulte $(LOG_DIR)/cpu-probes" >&2; \
 	exit 1
 
-test: test-sptp-simple measure-rtt measure-rtt-intra
-	@echo
-	@echo "[test] suite concluida (sptp-simple + measure-rtt + measure-rtt-intra)."
+test: _suite-banner test-sptp-simple measure-rtt measure-rtt-intra
+	@printf '\n'
+	@printf '═══════════════════════════════════════════════════════════════════\n'
+	@printf '  \xe2\x9c\x94  Suite SO2 concluida (3/3 testes aprovados)\n'
+	@printf '═══════════════════════════════════════════════════════════════════\n'
+
+_suite-banner:
+	@printf '\n'
+	@printf '═══════════════════════════════════════════════════════════════════\n'
+	@printf '  SO2 -- Suite de Testes (etapa 3: SPTP)\n'
+	@printf '  sptp-simple . measure-rtt . measure-rtt-intra\n'
+	@printf '═══════════════════════════════════════════════════════════════════\n'
 
 test-basic: select-qemu-cpu $(BASIC_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario basic..."
@@ -136,15 +145,14 @@ test-sptp-drift: select-qemu-cpu $(SPTP_DRIFT_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] cenario sptp-drift aprovado."
 
 test-sptp-simple: select-qemu-cpu $(SPTP_SIMPLE_BIN) $(RUN_QEMU_TEST)
-	@echo "[test] rodando cenario sptp-simple (6 VMs: RSU + 2 senders + 3 receivers)..."
+	@printf '\n'
+	@printf '\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 sptp-simple \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 6 VMs (RSU + 2 senders + 3 receivers) \xe2\x94\x80\xe2\x94\x80\n\n'
 	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_SIMPLE_BIN)" 6 sptp-simple "cenario validado."
-	@echo
-	@echo "===== resultados sptp-simple (offset por receiver, por sender) ====="
+	@printf '\n  Resultados (offset slave-master por receiver, por sender):\n'
 	@for f in $(LOG_DIR)/sptp-simple/latest/logs/vm*.log; do \
-		grep -aE "RESUMO" "$$f" || true; \
+		grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; \
 	done
-	@echo
-	@echo "[test] cenario sptp-simple aprovado."
+	@printf '\n  \xe2\x9c\x94 sptp-simple aprovado\n'
 
 test-stress: select-qemu-cpu $(STRESS_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario stress (intra + inter VM, 5 VMs)..."
@@ -152,28 +160,30 @@ test-stress: select-qemu-cpu $(STRESS_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] cenario stress aprovado."
 
 measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
-	@echo "[test] rodando cenario rtt-benchmark (5 VMs, latencia inter-VM)..."
+	@printf '\n'
+	@printf '\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 measure-rtt \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 5 VMs, latencia inter-VM via raw socket \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\n\n'
 	@set -e; \
 	artifacts_file=$$(mktemp /tmp/so2-rtt-artifacts.XXXXXX); \
 	KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(RTT_BIN)" 5 rtt-benchmark "RTT benchmark concluido."; \
 	artifacts_root=$$(cat $$artifacts_file); \
-	echo; \
-	echo "===== resultados measure-rtt (latencia inter-VM) ====="; \
-	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log"; \
-	echo "[measure-rtt] logs preservados em $$artifacts_root/logs"; \
+	printf '\n  Resultados:\n'; \
+	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log" | sed 's/^/    /'; \
+	printf '    (logs em %s)\n' "$$artifacts_root/logs"; \
 	rm -f $$artifacts_file
+	@printf '\n  \xe2\x9c\x94 measure-rtt aprovado\n'
 
 measure-rtt-intra: select-qemu-cpu $(RTT_INTRA_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
-	@echo "[test] rodando cenario rtt-intra-benchmark (1 VM, latencia intra-VM)..."
+	@printf '\n'
+	@printf '\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 measure-rtt-intra \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 1 VM, latencia intra-VM via SHM \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\n\n'
 	@set -e; \
 	artifacts_file=$$(mktemp /tmp/so2-rtt-intra-artifacts.XXXXXX); \
 	TIMEOUT_SEC=180 KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(RTT_INTRA_BIN)" 1 rtt-intra-benchmark "[rtt-intra][initiator] RTT intra benchmark concluido."; \
 	artifacts_root=$$(cat $$artifacts_file); \
-	echo; \
-	echo "===== resultados measure-rtt-intra (latencia intra-VM) ====="; \
-	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log"; \
-	echo "[measure-rtt-intra] logs preservados em $$artifacts_root/logs"; \
+	printf '\n  Resultados:\n'; \
+	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log" | sed 's/^/    /'; \
+	printf '    (logs em %s)\n' "$$artifacts_root/logs"; \
 	rm -f $$artifacts_file
+	@printf '\n  \xe2\x9c\x94 measure-rtt-intra aprovado\n'
 
 measure-rtt-10: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py $(TEST_DIR)/measure_rtt_batch.py
 	@LOGS_DIR="$(abspath $(LOG_DIR))" "$(PYTHON)" "$(TEST_DIR)/measure_rtt_batch.py" "$(RUN_QEMU_TEST)" "$$(cat "$(QEMU_CPU_FILE)")" 10 "$(RTT_BIN)"
@@ -192,7 +202,8 @@ logs:
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@printf '  CXX  %s\n' "$<"
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # pega todos os .o gerados de src/ e empacota num único arquivo .a (biblioteca estática)
 # o .a é um arquivo que agrupa código compilado pra ser linkado por outros programas
@@ -201,7 +212,8 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 # $^ = todos os pré-requisitos, ou seja, todos os .o de src/
 $(STATIC_LIB): $(OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
+	@printf '  AR   %s\n' "$@"
+	@$(AR) rcs $@ $^
 
 # regra genérica: pra cada .cpp em tests/ gera um binário em build/tests/
 # o % é um coringa: test_foo.cpp vira build/tests/test_foo
@@ -210,7 +222,8 @@ $(STATIC_LIB): $(OBJS)
 # $@ = o binário de saída
 $(BIN_DIR)/%: $(TEST_DIR)/%.cpp $(STATIC_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -l$(LIB_NAME) $(LDFLAGS) -o $@
+	@printf '  LD   %s\n' "$@"
+	@$(CXX) $(CXXFLAGS) $< -L$(LIB_DIR) -l$(LIB_NAME) $(LDFLAGS) -o $@
 
 clean:
 	rm -rf "$(BUILD_DIR)"
