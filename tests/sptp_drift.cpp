@@ -92,16 +92,6 @@ public:
 
     bool subscribe_logical_broadcast() const override { return false; }
     Port logical_port() const override { return Component_Ports::TEST_SPTP_DRIFT; }
-
-    // SCHED_DEADLINE: 1 envio a cada SEND_INTERVAL_MS (500ms). period casa
-    // com o intervalo natural. Runtime 20ms da folga ~20x sobre o trabalho
-    // real (snprintf+send+log), cobre maquinas mais lentas.
-    RT_Profile rt_profile() const override {
-        RT_Profile p;
-        p.policy = RT_Profile::Policy::DEADLINE;
-        p.deadline = { 20'000'000ULL, 500'000'000ULL, 500'000'000ULL };
-        return p;
-    }
 };
 
 class Drift_Slave : public Component {
@@ -169,15 +159,6 @@ public:
     }
 
     Port logical_port() const override { return Component_Ports::TEST_SPTP_DRIFT; }
-
-    // SCHED_DEADLINE: 1 mensagem chega a cada ~500ms (ritmo do drift-master).
-    // Runtime 20ms da folga ~20x; cobre maquinas mais lentas.
-    RT_Profile rt_profile() const override {
-        RT_Profile p;
-        p.policy = RT_Profile::Policy::DEADLINE;
-        p.deadline = { 20'000'000ULL, 500'000'000ULL, 500'000'000ULL };
-        return p;
-    }
 };
 
 } // namespace

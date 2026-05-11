@@ -20,12 +20,6 @@ Component::Port Braking_Actuator::logical_port() const {
     return Component_Ports::BRAKING_ACTUATOR;
 }
 
-Component::RT_Profile Braking_Actuator::rt_profile() const {
-    RT_Profile p;
-    p.policy = RT_Profile::Policy::DEADLINE;
-    return p;
-}
-
 void Braking_Actuator::apply(double value) {
     if (value < 0.0) value = 0.0;
     if (value > 150.0) value = 150.0;

@@ -21,9 +21,3 @@ void Lidar_Sensor::run() {
 Component::Port Lidar_Sensor::logical_port() const {
     return Component_Ports::LIDAR_SENSOR;
 }
-
-Component::RT_Profile Lidar_Sensor::rt_profile() const {
-    RT_Profile p;
-    p.policy = RT_Profile::Policy::DEADLINE;
-    return p;
-}

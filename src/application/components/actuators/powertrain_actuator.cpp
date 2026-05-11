@@ -20,12 +20,6 @@ Component::Port Powertrain_Actuator::logical_port() const {
     return Component_Ports::POWERTRAIN_ACTUATOR;
 }
 
-Component::RT_Profile Powertrain_Actuator::rt_profile() const {
-    RT_Profile p;
-    p.policy = RT_Profile::Policy::DEADLINE;
-    return p;
-}
-
 void Powertrain_Actuator::apply(double value) {
     if (value < 0.0) value = 0.0;
     _power_kw = value;

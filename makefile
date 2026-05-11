@@ -60,7 +60,7 @@ DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
 .PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple measure-rtt measure-rtt-intra measure-rtt-10 logs clean
 .SECONDARY: $(TEST_BINS) $(OBJS)
-.NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-10 select-qemu-cpu prepare-runtime
+.NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime
 
 all: test
 
@@ -109,9 +109,9 @@ select-qemu-cpu: prepare-runtime $(BASIC_BIN) $(RUN_QEMU_TEST)
 	echo "[select-qemu-cpu] nenhuma CPU compativel funcionou; consulte $(LOG_DIR)/cpu-probes" >&2; \
 	exit 1
 
-test: test-sptp-simple test-sptp-drift
+test: test-sptp-simple measure-rtt measure-rtt-intra
 	@echo
-	@echo "[test] suite concluida (sptp-simple + sptp-drift)."
+	@echo "[test] suite concluida (sptp-simple + measure-rtt + measure-rtt-intra)."
 
 test-basic: select-qemu-cpu $(BASIC_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario basic..."
@@ -136,13 +136,12 @@ test-sptp-drift: select-qemu-cpu $(SPTP_DRIFT_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] cenario sptp-drift aprovado."
 
 test-sptp-simple: select-qemu-cpu $(SPTP_SIMPLE_BIN) $(RUN_QEMU_TEST)
-	@echo "[test] rodando cenario sptp-simple (5 VMs: RSU + sender + 3 receivers)..."
-	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_SIMPLE_BIN)" 5 sptp-simple "cenario validado."
+	@echo "[test] rodando cenario sptp-simple (6 VMs: RSU + 2 senders + 3 receivers)..."
+	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(SPTP_SIMPLE_BIN)" 6 sptp-simple "cenario validado."
 	@echo
-	@echo "===== logs sptp-simple ====="
+	@echo "===== resultados sptp-simple (offset por receiver, por sender) ====="
 	@for f in $(LOG_DIR)/sptp-simple/latest/logs/vm*.log; do \
-		printf '\n--- %s ---\n' "$$f"; \
-		grep -aE '^\[[A-Za-z]' "$$f" || true; \
+		grep -aE "RESUMO" "$$f" || true; \
 	done
 	@echo
 	@echo "[test] cenario sptp-simple aprovado."
@@ -153,19 +152,25 @@ test-stress: select-qemu-cpu $(STRESS_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] cenario stress aprovado."
 
 measure-rtt: select-qemu-cpu $(RTT_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
+	@echo "[test] rodando cenario rtt-benchmark (5 VMs, latencia inter-VM)..."
 	@set -e; \
 	artifacts_file=$$(mktemp /tmp/so2-rtt-artifacts.XXXXXX); \
 	KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(RTT_BIN)" 5 rtt-benchmark "RTT benchmark concluido."; \
 	artifacts_root=$$(cat $$artifacts_file); \
+	echo; \
+	echo "===== resultados measure-rtt (latencia inter-VM) ====="; \
 	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log"; \
 	echo "[measure-rtt] logs preservados em $$artifacts_root/logs"; \
 	rm -f $$artifacts_file
 
 measure-rtt-intra: select-qemu-cpu $(RTT_INTRA_BIN) $(RUN_QEMU_TEST) $(TEST_DIR)/summarize_rtt.py
+	@echo "[test] rodando cenario rtt-intra-benchmark (1 VM, latencia intra-VM)..."
 	@set -e; \
 	artifacts_file=$$(mktemp /tmp/so2-rtt-intra-artifacts.XXXXXX); \
 	TIMEOUT_SEC=180 KEEP_ARTIFACTS=1 ARTIFACTS_FILE=$$artifacts_file LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(RTT_INTRA_BIN)" 1 rtt-intra-benchmark "[rtt-intra][initiator] RTT intra benchmark concluido."; \
 	artifacts_root=$$(cat $$artifacts_file); \
+	echo; \
+	echo "===== resultados measure-rtt-intra (latencia intra-VM) ====="; \
 	"$(PYTHON)" "$(TEST_DIR)/summarize_rtt.py" "$$artifacts_root/logs/vm1.log"; \
 	echo "[measure-rtt-intra] logs preservados em $$artifacts_root/logs"; \
 	rm -f $$artifacts_file

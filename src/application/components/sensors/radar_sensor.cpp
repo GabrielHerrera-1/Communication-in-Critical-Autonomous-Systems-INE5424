@@ -23,9 +23,3 @@ void Radar_Sensor::run() {
 Component::Port Radar_Sensor::logical_port() const {
     return Component_Ports::RADAR_SENSOR;
 }
-
-Component::RT_Profile Radar_Sensor::rt_profile() const {
-    RT_Profile p;
-    p.policy = RT_Profile::Policy::DEADLINE;
-    return p;
-}

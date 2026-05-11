@@ -14,7 +14,7 @@
 namespace {
 
 static const char RTT_LABEL[] = "rtt-intra";
-static const int MAX_SAMPLES = 50000;
+static const int MAX_SAMPLES = 5000;
 static const unsigned int STARTUP_DELAY_SEC = 5;
 static const unsigned int INTER_SAMPLE_DELAY_USEC = 0;
 static const unsigned int RUN_DURATION_SEC = 3600;
@@ -72,13 +72,6 @@ public:
 
     Port logical_port() const override {
         return Component_Ports::TEST_RTT_INTRA_INITIATOR;
-    }
-
-    RT_Profile rt_profile() const override {
-        RT_Profile p;
-        p.policy = RT_Profile::Policy::DEADLINE;
-        p.deadline = { 4'000'000ULL, 5'000'000ULL, 5'000'000ULL };
-        return p;
     }
 
     void run() override {
@@ -204,13 +197,6 @@ public:
         return Component_Ports::TEST_RTT_INTRA_RESPONDER;
     }
 
-
-    RT_Profile rt_profile() const override {
-        RT_Profile p;
-        p.policy = RT_Profile::Policy::DEADLINE;
-        p.deadline = { 4'000'000ULL, 5'000'000ULL, 5'000'000ULL };
-        return p;
-    }
 
     void run() override {
         if (!_communicator) {
