@@ -35,7 +35,7 @@ static const int VM_COUNT             = 6;
 static const int RSU_VM_ID            = 1;
 static const int SENDER_A_VM_ID       = 2;
 static const int SENDER_B_VM_ID       = 3;
-static const int STARTUP_DELAY_S      = 5;
+static const int STARTUP_DELAY_S      = 10;
 static const int MASTER_SEND_COUNT    = 30;
 static const int SLAVE_RECV_TARGET    = 25;
 static const unsigned int SEND_INTERVAL_MS = 500;
@@ -119,6 +119,17 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(SEND_INTERVAL_MS));
         }
 
+        // sentinela de fim de transmissao: envia 3x para tolerar perda de pacote
+        // no raw socket sob contencao. permite ao receiver sair do loop mesmo
+        // se algumas mensagens regulares se perderam.
+        for (int i = 0; i < 3; ++i) {
+            char done_payload[48];
+            std::snprintf(done_payload, sizeof(done_payload), "%s:vm%d:done", LABEL, _vm_id);
+            Message done_m(done_payload, std::strlen(done_payload) + 1);
+            _communicator->send(&done_m);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] envio concluido sent=" << MASTER_SEND_COUNT << std::endl;
         std::cout << "[" << LABEL << "][vm" << _vm_id
@@ -153,10 +164,21 @@ public:
 
         const std::size_t target_per_sender =
             static_cast<std::size_t>(SLAVE_RECV_TARGET);
-        const std::size_t target_total = target_per_sender * 2;
 
-        std::size_t collected = 0;
-        while (collected < target_total) {
+        bool sender_a_done = false;
+        bool sender_b_done = false;
+
+        // termina quando ambos os senders sinalizaram fim OU ambos os buckets
+        // encheram, o que vier primeiro. evita deadlock se algumas mensagens
+        // regulares se perderem no raw socket sob contencao.
+        auto done_with_a = [&]() {
+            return sender_a_done || deltas_a.size() >= target_per_sender;
+        };
+        auto done_with_b = [&]() {
+            return sender_b_done || deltas_b.size() >= target_per_sender;
+        };
+
+        while (!done_with_a() || !done_with_b()) {
             Message m;
             if (!_communicator->receive(&m)) {
                 std::cerr << "[" << LABEL << "][vm" << _vm_id
@@ -168,11 +190,26 @@ public:
             int64_t msg_ns   = m.timestamp();
             int64_t delta_us = (now_ns - msg_ns) / 1000;
 
-            // payload: "sptp-simple:vmN:seq"
-            int sender_vm = 0;
-            int seq = 0;
             const char * payload = reinterpret_cast<const char *>(m.data());
-            if (std::sscanf(payload, "sptp-simple:vm%d:%d", &sender_vm, &seq) != 2) {
+
+            // payload pode ser "sptp-simple:vmN:done" ou "sptp-simple:vmN:seq".
+            // parseamos o "tail" como string e decidimos depois - sscanf com
+            // ":done" no formato nao funciona porque ele retorna 1 ja na
+            // conversao do %d, antes de validar o sufixo.
+            int sender_vm = 0;
+            char tail[16];
+            if (std::sscanf(payload, "sptp-simple:vm%d:%15s", &sender_vm, tail) != 2) {
+                continue;
+            }
+
+            if (std::strcmp(tail, "done") == 0) {
+                if (sender_vm == SENDER_A_VM_ID) sender_a_done = true;
+                else if (sender_vm == SENDER_B_VM_ID) sender_b_done = true;
+                continue;
+            }
+
+            int seq = std::atoi(tail);
+            if (seq <= 0) {
                 continue;
             }
 
@@ -188,11 +225,21 @@ public:
             }
 
             bucket->push_back(delta_us);
-            ++collected;
             std::cout << "[" << LABEL << "][vm" << _vm_id
                       << "] OFFSET from=vm" << sender_vm
                       << " seq=" << seq
                       << " delta_us=" << delta_us << std::endl;
+        }
+
+        // amostras minimas para que a estatistica seja significativa.
+        // se ficou abaixo disso, perdeu pacotes demais e o teste falha.
+        const std::size_t MIN_SAMPLES = 10;
+        if (deltas_a.size() < MIN_SAMPLES || deltas_b.size() < MIN_SAMPLES) {
+            std::cerr << "[" << LABEL << "][vm" << _vm_id
+                      << "] FAIL amostras insuficientes: a=" << deltas_a.size()
+                      << " b=" << deltas_b.size()
+                      << " (minimo=" << MIN_SAMPLES << ")" << std::endl;
+            std::exit(1);
         }
 
         auto summarize = [&](const std::vector<int64_t> & deltas, int sender_vm) -> int64_t {

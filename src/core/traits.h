@@ -56,7 +56,10 @@ template <typename Address> struct Traits<SPTP_Protocol<Address>> {
     static constexpr double  ALPHA = 0.125;
 
     static constexpr int64_t MIN_OFFSET_NS = 100'000;       // 100us
-    static constexpr int64_t MAX_OFFSET_NS = 200'000'000;   // 200ms
+    // limite superior gera sobre quanto SPTP aceita corrigir num unico sync.
+    // 1s e folgado o suficiente para absorver drift inicial em hosts lentos
+    // (QEMU em maquina sob carga pode acumular >200ms antes do 1o sync).
+    static constexpr int64_t MAX_OFFSET_NS = 1'000'000'000; // 1s
 
     // palpite inicial de delay, refinado em cada round-trip.
     static constexpr int64_t INITIAL_DELAY_NS = 100'000;     // 100us
