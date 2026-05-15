@@ -2,6 +2,7 @@
 #define NIC_H
 
 #include "ethernet.h"
+#include "gps.h"
 #include "../core/observers/conditional_data_observer.h"
 #include "../core/buffer.h"
 #include "../core/traits.h"
@@ -100,8 +101,15 @@ public:
         memcpy(f->dst().raw(), dst.raw(), 6);
         memcpy(f->src().raw(), _address.raw(), 6);
         f->type(prot);
+        // Etapa 4: todo envio pergunta "em qual quadrante estou" para a
+        // engine (que consulta o modulo de kernel GPS) e carimba o quadrante
+        // da origem no header do frame.
+        f->quadrant(Engine::engine_current_quadrant());
         return buf;
     };
+
+    // Etapa 4: RSU (is_master=true) fixa o quadrante -- nao se desloca.
+    void set_fixed(bool fixed) { Engine::engine_set_fixed(fixed); }
 
     // envia o frame montado pelo engine e libera o buffer
     int send(Buffer<Ethernet::Frame> *buf) {

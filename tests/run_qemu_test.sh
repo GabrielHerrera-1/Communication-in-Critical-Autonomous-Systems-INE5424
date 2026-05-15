@@ -64,6 +64,8 @@ error() {
 KERNEL="$REPO_ROOT/kernel/Image"
 BASE_INITRAMFS="$REPO_ROOT/kernel/initramfs.cpio"
 BINARY_PATH="$REPO_ROOT/$BINARY_REL"
+# Etapa 4: modulo de kernel GPS (sincronizacao espacial por quadrantes)
+GPS_MODULE="$REPO_ROOT/kernel/gps_module/gps.ko"
 mkdir -p "$LOGS_DIR" "$LOGS_DIR/$SCENARIO_NAME"
 RUN_STAMP=$(date +%Y%m%d-%H%M%S)
 TMP_ROOT=$(mktemp -d "$LOGS_DIR/$SCENARIO_NAME/${RUN_STAMP}.XXXXXX")
@@ -217,6 +219,16 @@ WORKDIR=$(mktemp -d "/tmp/${SCENARIO_NAME}-rootfs.XXXXXX")
     cpio -id < "$BASE_INITRAMFS" >/dev/null
     cp "$BINARY_PATH" ./main
     chmod +x ./main
+    # Etapa 4: so o cenario de quadrantes embute o modulo de kernel GPS.
+    # Os demais cenarios rodam sem /dev/gps, e a NIC trata isso como "sem
+    # filtragem espacial" -- preservando o comportamento das etapas anteriores.
+    if [ -n "${WITH_GPS:-}" ]; then
+        if [ -f "$GPS_MODULE" ]; then
+            cp "$GPS_MODULE" ./gps.ko
+        else
+            echo "[test:$SCENARIO_NAME] aviso: gps.ko ausente ($GPS_MODULE); GPS desabilitado" >&2
+        fi
+    fi
     cat > init <<'EOF'
 #!/bin/sh
 echo "[init] start"
@@ -225,6 +237,12 @@ mount -t proc proc /proc >/dev/null 2>&1 || echo "[init] aviso: falha ao montar 
 mount -t sysfs none /sys >/dev/null 2>&1 || echo "[init] aviso: falha ao montar /sys"
 mount -t devtmpfs none /dev >/dev/null 2>&1 || echo "[init] aviso: falha ao montar /dev"
 ip link set dev eth0 up >/dev/null 2>&1 || echo "[init] aviso: falha ao subir eth0"
+# Etapa 4: carrega o modulo de kernel GPS. As coordenadas iniciais sao
+# definidas aleatoriamente pelo RNG do kernel (distintas por VM).
+if [ -f /gps.ko ]; then
+    echo "[init] insmod gps.ko"
+    insmod /gps.ko || echo "[init] aviso: insmod gps.ko falhou"
+fi
 echo "[init] executando /main"
 /main
 status=$?

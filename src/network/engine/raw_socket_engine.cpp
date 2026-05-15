@@ -145,5 +145,21 @@ void RawSocketEngine::start_receiving() {
 // coloquei aqui porque senao dropa tudo na nic quando é ipc
 bool RawSocketEngine::engine_should_drop_frame(const Ethernet::Frame & frame,
                                                const Ethernet::Address & local_address) const {
-    return frame.src() == local_address;
+    // self-drop: frame que voltou com o nosso proprio MAC
+    if (frame.src() == local_address)
+        return true;
+
+    // Etapa 4 - sincronizacao espacial: veiculos so se comunicam se estao no
+    // mesmo quadrante. Se o quadrante da origem (carimbado no frame) difere do
+    // nosso, descartamos a mensagem aqui na NIC. QUADRANT_NONE significa GPS
+    // ausente em algum dos lados -> nao filtramos (cenarios sem o modulo).
+    uint8_t my_quadrant = _gps.quadrant();
+    uint8_t origin_quadrant = frame.quadrant();
+    if (my_quadrant != GPS::QUADRANT_NONE &&
+        origin_quadrant != GPS::QUADRANT_NONE &&
+        my_quadrant != origin_quadrant) {
+        return true;
+    }
+
+    return false;
 }

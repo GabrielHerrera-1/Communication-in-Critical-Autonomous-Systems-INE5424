@@ -53,12 +53,18 @@ public:
             return false;
         }
 
+        // Etapa 4: o quadrante espacial da origem viaja no header do frame
+        // Ethernet. Lemos antes de _channel->receive() porque ele consome
+        // (libera) o buffer.
+        uint8_t origin_quadrant = buf->data()->quadrant();
+
         typename Channel::Address from;
         int64_t ts = 0;
         int size = _channel->receive(buf, &from, &ts, message->data(), message->size());
         message->_size = size;
         message->_origin = from;
         message->_timestamp = ts;
+        message->_quadrant = origin_quadrant;
 
         if (size <= 0)
             return false;

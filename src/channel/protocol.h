@@ -160,6 +160,9 @@ public:
             }
 
             _is_master = is_master;
+            // Etapa 4: a RSU e o unico no com is_master=true. Ela fixa o
+            // quadrante no GPS -- e uma estacao fixa, nao se desloca.
+            _socket_nic->set_fixed(is_master);
             Address own_addr(_socket_nic->address(), 0);
             _sptp = new SPTP_Protocol<Address>(own_addr, _is_master, &Protocol::send);
             _sptp->start();

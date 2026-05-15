@@ -40,8 +40,12 @@ RUN_QEMU_TEST := ./tests/run_qemu_test.sh
 SRCS := $(shell find $(SRC_DIR) -name "*.cpp")
 OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 
-CORE_TEST_NAMES := basic v3 sptp_drift sptp_simple
+CORE_TEST_NAMES := basic v3 sptp_drift sptp_simple quadrant
 BENCHMARK_NAMES := rtt stress rtt_intra
+
+# Etapa 4: modulo de kernel GPS (sincronizacao espacial)
+GPS_MODULE_DIR := kernel/gps_module
+GPS_KO         := $(GPS_MODULE_DIR)/gps.ko
 
 CORE_TEST_BINS := $(addprefix $(BIN_DIR)/,$(CORE_TEST_NAMES))
 BENCHMARK_BINS := $(addprefix $(BIN_DIR)/,$(BENCHMARK_NAMES))
@@ -50,6 +54,7 @@ TEST_BINS := $(CORE_TEST_BINS) $(BENCHMARK_BINS)
 SPTP_DRIFT_BIN   := $(BIN_DIR)/sptp_drift
 SPTP_SIMPLE_BIN  := $(BIN_DIR)/sptp_simple
 BASIC_BIN        := $(BIN_DIR)/basic
+QUADRANT_BIN     := $(BIN_DIR)/quadrant
 MESH_BIN := $(BIN_DIR)/v3
 RTT_BIN := $(BIN_DIR)/rtt
 STRESS_BIN := $(BIN_DIR)/stress
@@ -59,7 +64,7 @@ STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant gps-module measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -72,6 +77,15 @@ build:
 
 lib: $(STATIC_LIB)
 	@echo "[lib] biblioteca estatica atualizada em $(STATIC_LIB)."
+
+# Etapa 4: compila o modulo de kernel GPS (gps.ko) contra a arvore do kernel.
+# O Makefile de kernel/gps_module/ cuida do Kbuild (compila gps.c com -c e linka).
+gps-module: $(GPS_KO)
+
+$(GPS_KO): $(GPS_MODULE_DIR)/gps.c $(GPS_MODULE_DIR)/gps_ioctl.h $(GPS_MODULE_DIR)/Makefile
+	@echo "[gps-module] compilando modulo de kernel GPS"
+	@$(MAKE) --no-print-directory -C $(GPS_MODULE_DIR)
+	@echo "[gps-module] modulo pronto em $(GPS_KO)."
 
 prepare-runtime: stop-qemu
 	@mkdir -p "$(LOG_DIR)"
@@ -110,17 +124,17 @@ select-qemu-cpu: prepare-runtime $(BASIC_BIN) $(RUN_QEMU_TEST)
 	echo "[select-qemu-cpu] nenhuma CPU compativel funcionou; consulte $(LOG_DIR)/cpu-probes" >&2; \
 	exit 1
 
-test: _suite-banner test-sptp-simple measure-rtt measure-rtt-intra
+test: _suite-banner test-sptp-simple test-quadrant measure-rtt measure-rtt-intra
 	@printf '\n'
 	@printf '═══════════════════════════════════════════════════════════════════\n'
-	@printf '  \xe2\x9c\x94  Suite SO2 concluida (3/3 testes aprovados)\n'
+	@printf '  \xe2\x9c\x94  Suite SO2 concluida (4/4 testes aprovados)\n'
 	@printf '═══════════════════════════════════════════════════════════════════\n'
 
 _suite-banner:
 	@printf '\n'
 	@printf '═══════════════════════════════════════════════════════════════════\n'
-	@printf '  SO2 -- Suite de Testes (etapa 3: SPTP)\n'
-	@printf '  sptp-simple . measure-rtt . measure-rtt-intra\n'
+	@printf '  SO2 -- Suite de Testes (etapa 4: Sincronizacao Espacial)\n'
+	@printf '  sptp-simple . quadrant . measure-rtt . measure-rtt-intra\n'
 	@printf '═══════════════════════════════════════════════════════════════════\n'
 
 test-basic: select-qemu-cpu $(BASIC_BIN) $(RUN_QEMU_TEST)
@@ -154,6 +168,16 @@ test-sptp-simple: select-qemu-cpu $(SPTP_SIMPLE_BIN) $(RUN_QEMU_TEST)
 		grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; \
 	done
 	@printf '\n  \xe2\x9c\x94 sptp-simple aprovado\n'
+
+test-quadrant: select-qemu-cpu $(QUADRANT_BIN) $(RUN_QEMU_TEST) gps-module
+	@printf '\n'
+	@printf '\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 quadrant \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 5 VMs (RSU fixa + 4 veiculos moveis), sincronizacao espacial \xe2\x94\x80\xe2\x94\x80\n\n'
+	@TIMEOUT_SEC=240 WITH_GPS=1 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(QUADRANT_BIN)" 5 quadrant "cenario validado."
+	@printf '\n  Resultados (por VM):\n'
+	@for f in $(LOG_DIR)/quadrant/latest/logs/vm*.log; do \
+		grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; \
+	done
+	@printf '\n  \xe2\x9c\x94 quadrant aprovado\n'
 
 test-stress: select-qemu-cpu $(STRESS_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario stress (intra + inter VM, 5 VMs)..."
@@ -235,5 +259,6 @@ clean:
 	rm -f "$(TEST_DIR)/v1" "$(TEST_DIR)/v2"
 	rm -f "$(TEST_DIR)"/*.d
 	rm -f .qemu_cpu
+	-@$(MAKE) --no-print-directory -C $(GPS_MODULE_DIR) clean 2>/dev/null || true
 
 -include $(DEPS)
