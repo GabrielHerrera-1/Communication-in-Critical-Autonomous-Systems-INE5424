@@ -26,6 +26,12 @@
 #define GPS_DEV_NAME       "gps"
 #define GPS_MOVE_INTERVAL  (3 * HZ)   /* troca de quadrante a cada >= 3s */
 
+/* parametro do modulo: quadrante inicial fixo (0..3). -1 = aleatorio.
+ * Util pro cenario de teste posicionar uma RSU em cada quadrante. */
+static int initial_quadrant = -1;
+module_param(initial_quadrant, int, 0444);
+MODULE_PARM_DESC(initial_quadrant, "quadrante inicial 0..3 (default: aleatorio)");
+
 static int gps_major;
 static struct class *gps_class;
 static struct device *gps_device;
@@ -122,8 +128,12 @@ static int __init gps_init(void)
         return PTR_ERR(gps_device);
     }
 
-    /* quadrante inicial definido de forma aleatoria */
-    quadrant = get_random_u32() % GPS_QUADRANTS;
+    /* quadrante inicial: aleatorio por padrao, ou forcado pelo param */
+    if (initial_quadrant >= 0 && initial_quadrant < GPS_QUADRANTS) {
+        quadrant = initial_quadrant;
+    } else {
+        quadrant = get_random_u32() % GPS_QUADRANTS;
+    }
     last_change = jiffies;
 
     pr_info("gps: carregado (major=%d) quadrante inicial %d\n",

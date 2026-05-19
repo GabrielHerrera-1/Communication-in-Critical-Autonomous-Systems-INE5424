@@ -237,11 +237,19 @@ mount -t proc proc /proc >/dev/null 2>&1 || echo "[init] aviso: falha ao montar 
 mount -t sysfs none /sys >/dev/null 2>&1 || echo "[init] aviso: falha ao montar /sys"
 mount -t devtmpfs none /dev >/dev/null 2>&1 || echo "[init] aviso: falha ao montar /dev"
 ip link set dev eth0 up >/dev/null 2>&1 || echo "[init] aviso: falha ao subir eth0"
-# Etapa 4: carrega o modulo de kernel GPS. As coordenadas iniciais sao
-# definidas aleatoriamente pelo RNG do kernel (distintas por VM).
+# Etapa 4: carrega o modulo de kernel GPS. Para o cenario de quadrantes,
+# vm 1..4 sao RSUs ancoradas uma em cada quadrante (initial_quadrant); as
+# demais VMs comecam num quadrante aleatorio pelo RNG do kernel.
 if [ -f /gps.ko ]; then
-    echo "[init] insmod gps.ko"
-    insmod /gps.ko || echo "[init] aviso: insmod gps.ko falhou"
+    vm_id=$(sed -n 's/.*so2.vm_id=\([0-9]*\).*/\1/p' /proc/cmdline)
+    if [ -n "$vm_id" ] && [ "$vm_id" -ge 1 ] && [ "$vm_id" -le 4 ]; then
+        iq=$((vm_id - 1))
+        echo "[init] insmod gps.ko initial_quadrant=$iq (RSU vm$vm_id)"
+        insmod /gps.ko initial_quadrant=$iq || echo "[init] aviso: insmod gps.ko falhou"
+    else
+        echo "[init] insmod gps.ko (quadrante inicial aleatorio)"
+        insmod /gps.ko || echo "[init] aviso: insmod gps.ko falhou"
+    fi
 fi
 echo "[init] executando /main"
 /main

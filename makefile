@@ -171,8 +171,8 @@ test-sptp-simple: select-qemu-cpu $(SPTP_SIMPLE_BIN) $(RUN_QEMU_TEST)
 
 test-quadrant: select-qemu-cpu $(QUADRANT_BIN) $(RUN_QEMU_TEST) gps-module
 	@printf '\n'
-	@printf '\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 quadrant \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 5 VMs (RSU fixa + 4 veiculos moveis), sincronizacao espacial \xe2\x94\x80\xe2\x94\x80\n\n'
-	@TIMEOUT_SEC=240 WITH_GPS=1 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(QUADRANT_BIN)" 5 quadrant "cenario validado."
+	@printf '\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 quadrant \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 9 VMs (4 RSUs uma por quadrante + 5 veiculos moveis), sincronizacao espacial \xe2\x94\x80\xe2\x94\x80\n\n'
+	@TIMEOUT_SEC=240 WITH_GPS=1 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(QUADRANT_BIN)" 9 quadrant "cenario validado."
 	@printf '\n  Resultados (por VM):\n'
 	@for f in $(LOG_DIR)/quadrant/latest/logs/vm*.log; do \
 		grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; \

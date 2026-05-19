@@ -1,8 +1,10 @@
-// Etapa 4 -- Sincronizacao Espacial: cenario de validacao com 5 VMs.
+// Etapa 4 -- Sincronizacao Espacial: cenario de validacao com 9 VMs.
 //
 // Topologia:
-//   VM1      = RSU   (Vehicle is_master=true)  -> GPS congelado, quadrante FIXO
-//   VM2..VM5 = veiculos (is_master=false)      -> GPS se desloca (troca a cada >=3s)
+//   VM1..VM4 = RSUs (Vehicle is_master=true) -- uma RSU por quadrante (0..3),
+//              ancoradas via initial_quadrant=vm_id-1 no insmod do gps.ko;
+//              is_master dispara GPS_IOC_SET_FIXED, congelando o quadrante.
+//   VM5..VM9 = veiculos (is_master=false) -> GPS se desloca (troca a cada >=3s)
 //
 // Cada VM roda dois componentes:
 //   - QSender   : envia mensagens em broadcast a cada 500ms e registra a
@@ -28,10 +30,12 @@
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
 #include "../src/communication/message.h"
+#include "../src/core/clock.h"
 #include "../src/network/gps.h"
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -41,8 +45,8 @@
 
 namespace {
 
-static const int          VM_COUNT          = 5;
-static const int          RSU_VM_ID         = 1;     // VM master = RSU fixa
+static const int          VM_COUNT          = 9;
+static const int          FIRST_VEHICLE_VM  = 5;     // vm 1..4 = RSUs; 5..9 = veiculos
 static const int          STARTUP_DELAY_S   = 8;     // espera a pilha/SPTP subir
 static const int          SIM_DURATION_S    = 90;    // duracao da simulacao
 static const unsigned int SEND_INTERVAL_MS  = 500;
@@ -198,13 +202,21 @@ public:
         // ao retornar de run(), entao apenas a soltamos.
         rx.detach();
 
+        const int64_t dcount = _delta_count.load(std::memory_order_acquire);
+        const int64_t dsum   = _delta_sum_us.load(std::memory_order_acquire);
+        const int64_t dmax   = _delta_max_us.load(std::memory_order_acquire);
+        const int64_t davg   = dcount > 0 ? dsum / dcount : 0;
+
         // RESUMO consumido pelo makefile (grep RESUMO)
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] RESUMO role=" << (_is_master ? "RSU" : "veiculo")
                   << " received=" << received
                   << " same_quadrant=" << same
                   << " cross_quadrant=" << cross
-                  << " quad_changes=" << quad_changes << std::endl;
+                  << " quad_changes=" << quad_changes
+                  << " sync_avg_us=" << davg
+                  << " sync_max_us=" << dmax
+                  << " sync_samples=" << dcount << std::endl;
 
         // --- assercoes de validacao ---
 
@@ -272,6 +284,21 @@ private:
 
             if (origin_quad == my_quad) {
                 _same.fetch_add(1, std::memory_order_relaxed);
+
+                // Sincronizacao temporal: delta = recv_now - origem_ts.
+                // Veiculo e RSU co-localizados devem estar sincronizados
+                // via SPTP no master daquela regiao -> delta esperado em
+                // microssegundos. Se SPTP estiver quebrado pelo filtro de
+                // quadrante, o delta vai estourar.
+                int64_t delta_ns = Clock::now_ns() - m.timestamp();
+                int64_t delta_us = delta_ns / 1000;
+                if (delta_us < 0) delta_us = -delta_us;
+                _delta_sum_us.fetch_add(delta_us, std::memory_order_relaxed);
+                _delta_count.fetch_add(1, std::memory_order_relaxed);
+                int64_t prev_max = _delta_max_us.load(std::memory_order_relaxed);
+                while (delta_us > prev_max &&
+                       !_delta_max_us.compare_exchange_weak(prev_max, delta_us,
+                                                            std::memory_order_relaxed)) {}
             } else {
                 _cross.fetch_add(1, std::memory_order_relaxed);
                 std::cout << "[" << LABEL << "][vm" << _vm_id
@@ -289,13 +316,18 @@ private:
     std::atomic<long> _received{0};
     std::atomic<long> _same{0};
     std::atomic<long> _cross{0};
+    // sincronizacao temporal: agregados de delta_us (recv_now - origem_ts)
+    std::atomic<int64_t> _delta_sum_us{0};
+    std::atomic<int64_t> _delta_max_us{0};
+    std::atomic<int64_t> _delta_count{0};
 };
 
 } // namespace
 
 int main() {
     const int vm_id = detect_vm_id();
-    const bool is_master = (vm_id == RSU_VM_ID);
+    // vm 1..4 sao RSUs (is_master=true), ancoradas uma em cada quadrante.
+    const bool is_master = (vm_id < FIRST_VEHICLE_VM);
 
     // A RSU e o unico no com is_master=true. O gateway, ao iniciar o SPTP,
     // congela o GPS (set_fixed) -- a RSU fica fixa, os veiculos se deslocam.

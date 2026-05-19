@@ -5,6 +5,7 @@
 #include "../core/clock.h"
 #include "../core/traits.h"
 #include "../application/component_ports.h"
+#include "../network/gps.h"
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -51,8 +52,10 @@ public:
 
     ~SPTP_Protocol() { stop(); }
 
-    // resync periodica, so no slave. thread vigia ha quanto tempo nao recebe sync, se passar de _max_silence_s,
-    // dispara um novo round-trip. slave tambem pede sync imediata ao ligar
+    // resync periodica, so no slave. thread vigia (a) quanto tempo nao recebe
+    // sync e (b) se o quadrante do GPS mudou. Etapa 4: a troca de quadrante
+    // muda o master ativo (1 RSU por quadrante), entao precisamos resyncar
+    // imediatamente para nao carregar o offset do master antigo.
     void start() {
         if (_is_master) return;
 
@@ -65,21 +68,35 @@ public:
 
         _silence_worker = std::thread([this]() {
             using namespace std::chrono;
-            auto sleep_for = duration<double>(_max_silence_s);
+            // poll mais rapido que MAX_SILENCE_S para detectar trocas de
+            // quadrante (janela = 3s). 100ms da resposta sub-segundo a uma
+            // mudanca, sem inundar o canal.
+            const auto poll = milliseconds(100);
+            uint8_t last_quad = _gps.quadrant();
+
             while (_running.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(poll);
+
+                if (!_running.load(std::memory_order_acquire)) break;
+
                 if (!_first_sync_done.load(std::memory_order_acquire)) {
                     // retry rapido enquanto ainda nao houve sincronizacao
-                    // valida
-                    std::this_thread::sleep_for(milliseconds(Cfg::INITIAL_RETRY_MS));
-                    if (_running.load(std::memory_order_acquire)
-                        && !_first_sync_done.load(std::memory_order_acquire)) {
-                        send_sync_request();
-                    }
+                    send_sync_request();
                     continue;
                 }
 
-                std::this_thread::sleep_for(sleep_for);
+                // Etapa 4: troca de quadrante -> novo master -> resync ja
+                uint8_t cur_quad = _gps.quadrant();
+                if (cur_quad != GPS::QUADRANT_NONE &&
+                    last_quad != GPS::QUADRANT_NONE &&
+                    cur_quad != last_quad) {
+                    last_quad = cur_quad;
+                    send_sync_request();
+                    continue;
+                }
+                last_quad = cur_quad;
 
+                // watchdog de silencio (backup)
                 int64_t now  = steady_now_ns();
                 int64_t last = _last_sync_steady_ns.load(std::memory_order_acquire);
                 double elapsed_s = static_cast<double>(now - last) / 1e9;
@@ -272,6 +289,9 @@ private:
     std::atomic<int>  _sync_count{0};
     // sinaliza para o watchdog que ja houve pelo menos uma medicao nao-outlier
     std::atomic<bool> _first_sync_done{false};
+    // Etapa 4: GPS proprio da thread do watchdog, para detectar troca de
+    // quadrante e disparar resync imediato.
+    GPS _gps;
 };
 
 #endif

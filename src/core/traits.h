@@ -49,7 +49,10 @@ template <> struct Traits<Protocol<NIC<SharedMemoryEngine>, void>> {
 
 template <typename Address> struct Traits<SPTP_Protocol<Address>> {
 
-    static constexpr double  MAX_SILENCE_S = 15.0;
+    // Etapa 4: a janela de quadrante e 3s. Se o watchdog do SPTP fosse 15s,
+    // um veiculo passaria varias trocas de quadrante carregando o offset do
+    // master anterior. Mantemos < 3s para resyncar dentro da janela.
+    static constexpr double  MAX_SILENCE_S = 2.0;
 
     // usado no EWMA (delay_novo = (1 - 0.125) × delay_antigo + 0.125 × amostra_atual). serve basicamente pra diminuir o peso de amostras antigas
     // esse peso aqui é o peso de uma amostra nova
