@@ -43,7 +43,7 @@ private:
     int _sockfd{-1};
     int _ifindex{0};
     std::thread _worker;
-    std::atomic<int> _running{0};
+    std::atomic<bool> _running{false};
     // mutable: engine_should_drop_frame e const mas precisa consultar o GPS
     mutable GPS _gps;
 };
