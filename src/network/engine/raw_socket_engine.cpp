@@ -109,7 +109,7 @@ void RawSocketEngine::start_receiving() {
         sigaddset(&mask, SIGIO);
         pthread_sigmask(SIG_BLOCK, &mask, nullptr);
 
-        unsigned char buf[1514];
+        unsigned char buf[sizeof(Ethernet::Frame)];
 
         while (_running) {
             // bloqueia esperando SIGIO (signal de que chegou dado no socket)
@@ -142,7 +142,6 @@ void RawSocketEngine::start_receiving() {
     });
 }
 
-// coloquei aqui porque senao dropa tudo na nic quando é ipc
 bool RawSocketEngine::engine_should_drop_frame(const Ethernet::Frame & frame,
                                                const Ethernet::Address & local_address) const {
     // self-drop: frame que voltou com o nosso proprio MAC
