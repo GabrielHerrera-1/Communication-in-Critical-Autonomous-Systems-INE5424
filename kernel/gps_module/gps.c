@@ -125,5 +125,5 @@ module_init(gps_init);
 module_exit(gps_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("SO2 Etapa 4");
+MODULE_AUTHOR("Arthur Erpen, Caetano Peruzzo e Gabriel Herrera");
 MODULE_DESCRIPTION("GPS virtual: sincronizacao espacial por quadrantes");

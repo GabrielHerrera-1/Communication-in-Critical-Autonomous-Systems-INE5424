@@ -15,3 +15,7 @@ tests/__pycache__/
 *.symvers
 modules.order
 .tmp_versions/
+
+# excecao: gps.ko pre-compilado fica no repo (mesma versao do kernel/Image)
+# quem nao tem o kernel-build-x86 usa esse diretamente
+!kernel/gps_module/gps.ko

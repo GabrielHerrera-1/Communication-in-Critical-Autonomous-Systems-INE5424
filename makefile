@@ -64,7 +64,7 @@ STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant gps-module measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant gps-module gps-rebuild measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -78,13 +78,24 @@ build:
 lib: $(STATIC_LIB)
 	@echo "[lib] biblioteca estatica atualizada em $(STATIC_LIB)."
 
-# Etapa 4: compila o modulo de kernel GPS (gps.ko) contra a arvore do kernel.
-# O Makefile de kernel/gps_module/ cuida do Kbuild (compila gps.c com -c e linka).
-gps-module: $(GPS_KO)
+# Etapa 4: modulo de kernel GPS (gps.ko).
+# O gps.ko fica commitado no repo (mesma versao do kernel/Image), entao o
+# teste usa o binario pronto -- ninguem precisa do kernel-build-x86 local.
+# Para recompilar apos editar gps.c:
+#   make gps-rebuild           (kernel-build-x86 um nivel acima do repo)
+#   make gps-rebuild KDIR=...  (arvore de kernel em outro caminho)
+KDIR ?= $(abspath $(CURDIR)/../kernel-build-x86/linux-6.15.5)
 
-$(GPS_KO): $(GPS_MODULE_DIR)/gps.c $(GPS_MODULE_DIR)/gps_ioctl.h $(GPS_MODULE_DIR)/Makefile
-	@echo "[gps-module] compilando modulo de kernel GPS"
-	@$(MAKE) --no-print-directory -C $(GPS_MODULE_DIR)
+gps-module:
+	@test -f "$(GPS_KO)" || { \
+		echo "[gps-module] ERRO: $(GPS_KO) ausente (deveria estar commitado)."; \
+		echo "  rode 'make gps-rebuild' para compila-lo."; \
+		exit 1; \
+	}
+
+gps-rebuild:
+	@echo "[gps-module] recompilando modulo de kernel GPS"
+	@$(MAKE) --no-print-directory -C $(GPS_MODULE_DIR) KDIR=$(KDIR)
 	@echo "[gps-module] modulo pronto em $(GPS_KO)."
 
 prepare-runtime: stop-qemu
