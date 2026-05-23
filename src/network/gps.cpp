@@ -6,12 +6,10 @@
 #include <cstdio>
 
 GPS::GPS() : _fd(-1) {
+    // GPS indisponivel (modulo nao carregado): ok() retorna false e a NIC
+    // desabilita filtragem espacial. Nao imprime erro pois e comportamento
+    // esperado nos cenarios sem o modulo GPS.
     _fd = ::open("/dev/gps", O_RDWR);
-    if (_fd < 0) {
-        // GPS indisponivel (build nativo / modulo nao carregado): a NIC vai
-        // tratar isso como "sem filtragem espacial".
-        perror("[GPS] open /dev/gps");
-    }
 }
 
 GPS::~GPS() {
