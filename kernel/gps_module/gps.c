@@ -1,21 +1,17 @@
 /*
  * gps.c - Modulo de kernel "GPS virtual" para a Etapa 4 (Sincronizacao Espacial).
  *
- * Char device /dev/gps com interface SOMENTE via ioctl (open/close/ioctl,
- * sem read/write). Simula o deslocamento da VM entre quadrantes: a cada
- * >= 3 segundos sorteia um novo quadrante (rand % 4). As coordenadas sao
- * inicialmente definidas de forma aleatoria.
+ * Misc device /dev/gps (major 10, MISC_DYNAMIC_MINOR) com interface somente
+ * via ioctl. Simula deslocamento entre quadrantes adjacentes (grade 2x2):
+ * a cada >= 3s move para um vizinho aleatorio usando jiffies como contador.
  *
- * Nao cria threads nem timers: o sorteio acontece de forma preguicosa no
- * ioctl, comparando jiffies com o instante da ultima troca.
- *
- * insmod/ldmod chama gps_init() (module_init); rmmod chama gps_exit().
+ * Sem threads, sem timers: avanco pregicoso no proprio ioctl GET_QUADRANT.
  */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
-#include <linux/device.h>
+#include <linux/miscdevice.h>
 #include <linux/uaccess.h>
 #include <linux/jiffies.h>
 #include <linux/mutex.h>
@@ -23,48 +19,43 @@
 
 #include "gps_ioctl.h"
 
-#define GPS_DEV_NAME       "gps"
 #define GPS_MOVE_INTERVAL  (3 * HZ)   /* troca de quadrante a cada >= 3s */
 
-/* parametro do modulo: quadrante inicial fixo (0..3). -1 = aleatorio.
- * Util pro cenario de teste posicionar uma RSU em cada quadrante. */
+/* parametro do modulo: quadrante inicial fixo (0..3). -1 = aleatorio. */
 static int initial_quadrant = -1;
 module_param(initial_quadrant, int, 0444);
 MODULE_PARM_DESC(initial_quadrant, "quadrante inicial 0..3 (default: aleatorio)");
 
-static int gps_major;
-static struct class *gps_class;
-static struct device *gps_device;
-
 /* estado da simulacao; ioctl pode ser concorrente => mutex */
 static DEFINE_MUTEX(gps_lock);
-static int quadrant;                /* quadrante atual: 0..3 */
-static unsigned long last_change;   /* jiffies da ultima troca */
-static bool fixed;                  /* RSU: quadrante congelado, nao se desloca */
+static int           quadrant;      /* quadrante atual: 0..3        */
+static unsigned long last_change;   /* jiffies da ultima troca       */
+static bool          fixed;         /* RSU: quadrante congelado      */
 
-/* sorteia um novo quadrante se ja passou GPS_MOVE_INTERVAL. sob gps_lock. */
+/*
+ * Grade 2x2:  Q0 | Q1
+ *             -------
+ *             Q2 | Q3
+ * Cada quadrante tem exatamente 2 vizinhos (sem diagonais).
+ * Q0 nao pode ir direto para Q3; Q1 nao pode ir direto para Q2.
+ */
+static const int gps_neighbors[GPS_QUADRANTS][2] = {
+    {1, 2},  /* Q0: vizinhos Q1, Q2 */
+    {0, 3},  /* Q1: vizinhos Q0, Q3 */
+    {0, 3},  /* Q2: vizinhos Q0, Q3 */
+    {1, 2},  /* Q3: vizinhos Q1, Q2 */
+};
+
+/* avanca para um quadrante adjacente se passou GPS_MOVE_INTERVAL. sob gps_lock. */
 static void gps_advance_locked(void)
 {
-    /* RSU (is_master): quadrante congelado */
     if (fixed)
         return;
-    /* ainda nao passou o intervalo: permanece no mesmo quadrante */
-    /* time_before é macro do kernel que trata overflow de jiffies */
+    /* time_before trata overflow de jiffies */
     if (time_before(jiffies, last_change + GPS_MOVE_INTERVAL))
         return;
-
-    quadrant = get_random_u32() % GPS_QUADRANTS;   /* rand % 4 */
+    quadrant    = gps_neighbors[quadrant][get_random_u32() % 2];
     last_change = jiffies;
-}
-
-static int gps_open(struct inode *inode, struct file *file)
-{
-    return 0;
-}
-
-static int gps_release(struct inode *inode, struct file *file)
-{
-    return 0;
 }
 
 static long gps_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -77,14 +68,11 @@ static long gps_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         gps_advance_locked();
         q = quadrant;
         mutex_unlock(&gps_lock);
-
         if (copy_to_user((void __user *)arg, &q, sizeof(q)))
             return -EFAULT;
         return 0;
 
     case GPS_IOC_SET_FIXED:
-        /* RSU congela o quadrante: o estado e global ao modulo, entao todos
-         * os processos da VM passam a ver o mesmo quadrante fixo. */
         mutex_lock(&gps_lock);
         fixed = true;
         mutex_unlock(&gps_lock);
@@ -96,57 +84,40 @@ static long gps_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     }
 }
 
-/* nosso GPS so sabe fazer open, close e ioctl */
 static const struct file_operations gps_fops = {
     .owner          = THIS_MODULE,
-    .open           = gps_open,
-    .release        = gps_release,
     .unlocked_ioctl = gps_ioctl,
+};
+
+/* major 10 (MISC_MAJOR): reservado pelo kernel para misc devices em
+ * todas as distribuicoes. Evita alocar um major proprio desnecessariamente. */
+static struct miscdevice gps_misc = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .name  = "gps",
+    .fops  = &gps_fops,
 };
 
 static int __init gps_init(void)
 {
-    /* register_chrdev avisa o kernel o que sabemos fazer (gps_fops).
-     * major 0 => o kernel aloca um major livre e devolve. */
-    gps_major = register_chrdev(0, GPS_DEV_NAME, &gps_fops);
-    if (gps_major < 0) {
-        pr_err("gps: register_chrdev falhou: %d\n", gps_major);
-        return gps_major;
-    }
+    int ret;
 
-    /* cria a classe + device para o devtmpfs gerar /dev/gps sozinho */
-    gps_class = class_create(GPS_DEV_NAME);
-    if (IS_ERR(gps_class)) {
-        unregister_chrdev(gps_major, GPS_DEV_NAME);
-        return PTR_ERR(gps_class);
-    }
-
-    gps_device = device_create(gps_class, NULL, MKDEV(gps_major, 0),
-                               NULL, GPS_DEV_NAME);
-    if (IS_ERR(gps_device)) {
-        class_destroy(gps_class);
-        unregister_chrdev(gps_major, GPS_DEV_NAME);
-        return PTR_ERR(gps_device);
-    }
-
-    /* quadrante inicial: aleatorio por padrao, ou forcado pelo param */
-    if (initial_quadrant >= 0 && initial_quadrant < GPS_QUADRANTS) {
+    if (initial_quadrant >= 0 && initial_quadrant < GPS_QUADRANTS)
         quadrant = initial_quadrant;
-    } else {
+    else
         quadrant = get_random_u32() % GPS_QUADRANTS;
-    }
     last_change = jiffies;
 
-    pr_info("gps: carregado (major=%d) quadrante inicial %d\n",
-            gps_major, quadrant);
-    return 0;
+    ret = misc_register(&gps_misc);
+    if (ret)
+        pr_err("gps: misc_register falhou: %d\n", ret);
+    else
+        pr_info("gps: carregado quadrante inicial %d\n", quadrant);
+    return ret;
 }
 
 static void __exit gps_exit(void)
 {
-    device_destroy(gps_class, MKDEV(gps_major, 0));
-    class_destroy(gps_class);
-    unregister_chrdev(gps_major, GPS_DEV_NAME);
+    misc_deregister(&gps_misc);
     pr_info("gps: descarregado\n");
 }
 
