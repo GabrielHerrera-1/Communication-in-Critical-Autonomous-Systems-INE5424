@@ -46,8 +46,7 @@ public:
           _pending_seq(0),
           _next_seq(1),
           _last_sync_steady_ns(0),
-          _max_silence_s(load_max_silence()),
-          _running(false) {}
+          _max_silence_s(load_max_silence()) {}
 
     ~SPTP_Protocol() { stop(); }
 
@@ -266,7 +265,7 @@ private:
     std::atomic<int64_t>  _last_sync_steady_ns; // steady_clock na ultima aplicacao
     double  _max_silence_s;              // periodo da ressincronizacao automatica
 
-    std::atomic<int>  _running;
+    std::atomic<bool> _running{false};
     std::thread       _silence_worker;
     std::atomic<int>  _sync_count{0};
     // sinaliza para o watchdog que ja houve pelo menos uma medicao nao-outlier
