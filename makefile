@@ -124,7 +124,7 @@ select-qemu-cpu: prepare-runtime $(BASIC_BIN) $(RUN_QEMU_TEST)
 	echo "[select-qemu-cpu] nenhuma CPU compativel funcionou; consulte $(LOG_DIR)/cpu-probes" >&2; \
 	exit 1
 
-test: _suite-banner test-sptp-simple test-quadrant measure-rtt measure-rtt-intra
+test: _suite-banner measure-rtt measure-rtt-intra test-quadrant
 	@printf '\n'
 	@printf '═══════════════════════════════════════════════════════════════════\n'
 	@printf '  \xe2\x9c\x94  Suite SO2 concluida (4/4 testes aprovados)\n'

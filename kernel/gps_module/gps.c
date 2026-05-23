@@ -49,6 +49,7 @@ static void gps_advance_locked(void)
     if (fixed)
         return;
     /* ainda nao passou o intervalo: permanece no mesmo quadrante */
+    /* time_before é macro do kernel que trata overflow de jiffies */
     if (time_before(jiffies, last_change + GPS_MOVE_INTERVAL))
         return;
 

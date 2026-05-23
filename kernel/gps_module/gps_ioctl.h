@@ -13,8 +13,10 @@
 
 #define GPS_IOC_MAGIC        'g'
 /* le o quadrante atual da VM (0..3); avanca a simulacao se passou o intervalo */
+/* IOR porque o userspace so le os dados encaminhados pelo kernel */
 #define GPS_IOC_GET_QUADRANT _IOR(GPS_IOC_MAGIC, 1, int)
 /* congela o quadrante: a VM para de se deslocar (RSU, is_master) */
+/* IO porque o userspace n precisa nem ler nem escrever dados no kernel */
 #define GPS_IOC_SET_FIXED    _IO(GPS_IOC_MAGIC, 2)
 
 #endif /* GPS_IOCTL_H */

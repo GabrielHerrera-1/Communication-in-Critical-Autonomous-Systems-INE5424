@@ -1,36 +1,6 @@
-// Etapa 4 -- Sincronizacao Espacial: cenario de validacao com 9 VMs.
-//
-// Topologia:
-//   VM1..VM4 = RSUs (Vehicle is_master=true) -- uma RSU por quadrante (0..3),
-//              ancoradas via initial_quadrant=vm_id-1 no insmod do gps.ko;
-//              is_master dispara GPS_IOC_SET_FIXED, congelando o quadrante.
-//   VM5..VM9 = veiculos (is_master=false) -> GPS se desloca (troca a cada >=3s)
-//
-// Cada VM roda dois componentes:
-//   - QSender   : envia mensagens em broadcast a cada 500ms e registra a
-//                 linha do tempo do proprio quadrante (deslocamento).
-//   - QReceiver : recebe mensagens e, para cada uma, compara o quadrante da
-//                 origem (que viajou no header do frame Ethernet ate a
-//                 Message) com o proprio quadrante atual. Tambem amostra o
-//                 proprio quadrante para detectar deslocamento.
-//
-// Para a checagem de sucesso do harness (grep por "cenario validado." por
-// VM), apenas o QReceiver imprime o padrao de sucesso -- e ele so o faz se
-// todas as assercoes passarem. O QSender nunca imprime o padrao.
-//
-// O que o teste prova:
-//   1. Filtragem espacial: a NIC so entrega mensagens da mesma regiao. Com o
-//      filtro ATIVO, ~todas as mensagens recebidas sao "same quadrant"
-//      (cross ~ 0). Com o filtro QUEBRADO, ~75% seriam "cross quadrant" (1
-//      em cada 4 VMs co-localizada, em media). Assercao: cross <= received/10.
-//   2. A RSU fica fixa: is_master congela o GPS no kernel; o QReceiver da
-//      RSU observa quad_changes == 0 durante toda a simulacao.
-//   3. Comunicacao funciona de fato: received >= MIN_RECEIVED.
-
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
 #include "../src/communication/message.h"
-#include "../src/core/clock.h"
 #include "../src/network/gps.h"
 
 #include <atomic>
@@ -202,21 +172,13 @@ public:
         // ao retornar de run(), entao apenas a soltamos.
         rx.detach();
 
-        const int64_t dcount = _delta_count.load(std::memory_order_acquire);
-        const int64_t dsum   = _delta_sum_us.load(std::memory_order_acquire);
-        const int64_t dmax   = _delta_max_us.load(std::memory_order_acquire);
-        const int64_t davg   = dcount > 0 ? dsum / dcount : 0;
-
         // RESUMO consumido pelo makefile (grep RESUMO)
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] RESUMO role=" << (_is_master ? "RSU" : "veiculo")
                   << " received=" << received
                   << " same_quadrant=" << same
                   << " cross_quadrant=" << cross
-                  << " quad_changes=" << quad_changes
-                  << " sync_avg_us=" << davg
-                  << " sync_max_us=" << dmax
-                  << " sync_samples=" << dcount << std::endl;
+                  << " quad_changes=" << quad_changes << std::endl;
 
         // --- assercoes de validacao ---
 
@@ -284,21 +246,6 @@ private:
 
             if (origin_quad == my_quad) {
                 _same.fetch_add(1, std::memory_order_relaxed);
-
-                // Sincronizacao temporal: delta = recv_now - origem_ts.
-                // Veiculo e RSU co-localizados devem estar sincronizados
-                // via SPTP no master daquela regiao -> delta esperado em
-                // microssegundos. Se SPTP estiver quebrado pelo filtro de
-                // quadrante, o delta vai estourar.
-                int64_t delta_ns = Clock::now_ns() - m.timestamp();
-                int64_t delta_us = delta_ns / 1000;
-                if (delta_us < 0) delta_us = -delta_us;
-                _delta_sum_us.fetch_add(delta_us, std::memory_order_relaxed);
-                _delta_count.fetch_add(1, std::memory_order_relaxed);
-                int64_t prev_max = _delta_max_us.load(std::memory_order_relaxed);
-                while (delta_us > prev_max &&
-                       !_delta_max_us.compare_exchange_weak(prev_max, delta_us,
-                                                            std::memory_order_relaxed)) {}
             } else {
                 _cross.fetch_add(1, std::memory_order_relaxed);
                 std::cout << "[" << LABEL << "][vm" << _vm_id
@@ -316,10 +263,6 @@ private:
     std::atomic<long> _received{0};
     std::atomic<long> _same{0};
     std::atomic<long> _cross{0};
-    // sincronizacao temporal: agregados de delta_us (recv_now - origem_ts)
-    std::atomic<int64_t> _delta_sum_us{0};
-    std::atomic<int64_t> _delta_max_us{0};
-    std::atomic<int64_t> _delta_count{0};
 };
 
 } // namespace
