@@ -2,6 +2,7 @@
 #include "../src/application/components/component.h"
 #include "../src/communication/message.h"
 #include "../src/network/gps.h"
+#include "../src/application/rsu.h"
 
 #include <atomic>
 #include <chrono>
@@ -118,8 +119,8 @@ private:
 // Recebe mensagens, classifica same/cross-quadrant e valida o cenario.
 class QReceiver : public Component {
 public:
-    QReceiver(int vm_id, bool is_master)
-        : Component(LABEL), _vm_id(vm_id), _is_master(is_master) {}
+    QReceiver(int vm_id)
+        : Component(LABEL), _vm_id(vm_id){}
 
     void initialize() override {}
 
@@ -174,21 +175,13 @@ public:
 
         // RESUMO consumido pelo makefile (grep RESUMO)
         std::cout << "[" << LABEL << "][vm" << _vm_id
-                  << "] RESUMO role=" << (_is_master ? "RSU" : "veiculo")
+                  << "] RESUMO role=" << "veiculo"
                   << " received=" << received
                   << " same_quadrant=" << same
                   << " cross_quadrant=" << cross
                   << " quad_changes=" << quad_changes << std::endl;
 
         // --- assercoes de validacao ---
-
-        // (2) a RSU (is_master) nao se desloca
-        if (_is_master && quad_changes != 0) {
-            std::cerr << "[" << LABEL << "][vm" << _vm_id
-                      << "] FAIL RSU deveria ficar fixa mas quad_changes="
-                      << quad_changes << std::endl;
-            std::exit(1);
-        }
 
         // (3) comunicacao aconteceu de fato
         if (received < MIN_RECEIVED) {
@@ -258,7 +251,6 @@ private:
     }
 
     int  _vm_id;
-    bool _is_master;
     std::atomic<bool> _running{false};
     std::atomic<long> _received{0};
     std::atomic<long> _same{0};
@@ -270,14 +262,19 @@ private:
 int main() {
     const int vm_id = detect_vm_id();
     // vm 1..4 sao RSUs (is_master=true), ancoradas uma em cada quadrante.
-    const bool is_master = (vm_id < FIRST_VEHICLE_VM);
+    if(vm_id < FIRST_VEHICLE_VM){
+        RSU rsu;
+        rsu.initialize();
+        rsu.run();
+        return 0;
+    }
 
     // A RSU e o unico no com is_master=true. O gateway, ao iniciar o SPTP,
     // congela o GPS (set_fixed) -- a RSU fica fixa, os veiculos se deslocam.
-    Vehicle vehicle(is_master);
+    Vehicle vehicle(false);
     vehicle.add_component(new QSender(vm_id),
                           Component_Ports::TEST_QUADRANT_SENDER);
-    vehicle.add_component(new QReceiver(vm_id, is_master),
+    vehicle.add_component(new QReceiver(vm_id),
                           Component_Ports::TEST_QUADRANT_RECEIVER);
     vehicle.initialize();
     vehicle.run();
