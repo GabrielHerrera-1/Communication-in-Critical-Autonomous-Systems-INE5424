@@ -24,6 +24,8 @@ static const unsigned int SEND_INTERVAL_MS  = 500;
 static const int          SAMPLE_INTERVAL_MS = 1000; // amostragem de quadrante
 static const int          DRAIN_S           = 3;     // drena mensagens finais
 static const int          MIN_RECEIVED      = 20;    // liveness minima
+static const int          RSU_FIX_CHECK_S   = 15;    // janela p/ provar RSU fixa
+                                                     // (cruza ~5 intervalos de 3s)
 
 static const char LABEL[] = "quadrant";
 
@@ -261,16 +263,51 @@ private:
 
 int main() {
     const int vm_id = detect_vm_id();
-    // vm 1..4 sao RSUs (is_master=true), ancoradas uma em cada quadrante.
-    if(vm_id < FIRST_VEHICLE_VM){
+
+    // vm 1..4 sao RSUs: estacoes fixas (uma por quadrante via initial_quadrant
+    // no insmod) que atuam como master SPTP. Antes de subir o master, provamos
+    // que o quadrante realmente nao se desloca: congelamos com set_fixed -- a
+    // mesma chamada que o enable_sync da RSU faz -- e amostramos por uma janela
+    // que cruza varios intervalos de 3s. A verificacao roda ANTES de RSU::run()
+    // (que imprime "cenario validado." e bloqueia), entao uma falha aqui aborta
+    // o no e impede o padrao de sucesso.
+    if (vm_id < FIRST_VEHICLE_VM) {
+        GPS gps;
+        if (!gps.ok()) {
+            std::cerr << "[" << LABEL << "][vm" << vm_id
+                      << "] RSU: FAIL /dev/gps indisponivel" << std::endl;
+            return 1;
+        }
+
+        gps.set_fixed(true);
+        const uint8_t fixed_quad = gps.quadrant();
+
+        const int samples = (RSU_FIX_CHECK_S * 1000) / SAMPLE_INTERVAL_MS;
+        for (int i = 0; i < samples; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(SAMPLE_INTERVAL_MS));
+            uint8_t q = gps.quadrant();
+            if (q != fixed_quad) {
+                std::cerr << "[" << LABEL << "][vm" << vm_id
+                          << "] FAIL RSU deveria ficar fixa mas quadrante mudou "
+                          << int(fixed_quad) << " -> " << int(q) << std::endl;
+                return 1;
+            }
+        }
+
+        std::cout << "[" << LABEL << "][vm" << vm_id
+                  << "] RESUMO role=RSU quadrante_fixo=" << int(fixed_quad)
+                  << " quad_changes=0" << std::endl;
+
+        // quadrante confirmado fixo: sobe a RSU (master SPTP). run() imprime
+        // "cenario validado." e mantem o processo vivo atendendo os slaves.
         RSU rsu;
         rsu.initialize();
         rsu.run();
         return 0;
     }
 
-    // A RSU e o unico no com is_master=true. O gateway, ao iniciar o SPTP,
-    // congela o GPS (set_fixed) -- a RSU fica fixa, os veiculos se deslocam.
+    // vm 5..9 sao veiculos: deslocam-se entre quadrantes e validam a filtragem
+    // espacial (QSender broadcast + QReceiver classifica same/cross-quadrant).
     Vehicle vehicle(false);
     vehicle.add_component(new QSender(vm_id),
                           Component_Ports::TEST_QUADRANT_SENDER);
