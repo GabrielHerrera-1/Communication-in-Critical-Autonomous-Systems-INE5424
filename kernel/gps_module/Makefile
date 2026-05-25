@@ -4,7 +4,7 @@
 # kernel/Image usado pelo QEMU). O Kbuild compila gps.c com -c e o linka.
 #
 #   make            -> gera gps.ko
-#   make clean      -> remove artefatos
+#   make clean      -> remove intermediarios do Kbuild (PRESERVA gps.ko)
 #   make KDIR=/...  -> aponta para outra arvore de kernel
 
 obj-m += gps.o
@@ -22,6 +22,10 @@ all:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	@# remove apenas intermediarios do Kbuild; gps.ko fica versionado no repo.
+	@# nao usa o Kbuild clean (que apagaria o gps.ko) nem depende do KDIR.
+	find . -type f \( -name '*.o' -o -name '*.mod' -o -name '*.mod.c' \
+		-o -name '*.cmd' -o -name '*.symvers' -o -name 'modules.order' \) -delete
+	rm -rf .tmp_versions
 
 .PHONY: all clean

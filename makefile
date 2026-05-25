@@ -270,6 +270,6 @@ clean:
 	rm -f "$(TEST_DIR)/v1" "$(TEST_DIR)/v2"
 	rm -f "$(TEST_DIR)"/*.d
 	rm -f .qemu_cpu
-	-@$(MAKE) --no-print-directory -C $(GPS_MODULE_DIR) clean 2>/dev/null || true
+	@$(MAKE) --no-print-directory -C $(GPS_MODULE_DIR) clean
 
 -include $(DEPS)
