@@ -127,6 +127,8 @@ public:
 
     // envia o frame montado pelo engine e libera o buffer
     int send(Buffer<Ethernet::Frame> *buf) {
+        // não tem risco de a shm nic escrever um vazio num quadrant válido pois ela nunca recebe
+        // a função de como reeescreve o quadrant (_write_quadrant é o default pra shm)
         _write_quadrant(buf->data()->payload(), Engine::engine_current_quadrant());
         int bytes = Engine::engine_send(buf->data(), Ethernet::HEADER_SIZE + buf->size());
         if (bytes > 0) {
