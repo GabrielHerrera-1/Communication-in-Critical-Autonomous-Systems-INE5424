@@ -55,10 +55,12 @@ public:
 
         typename Channel::Address from;
         int64_t ts = 0;
-        int size = _channel->receive(buf, &from, &ts, message->data(), message->size());
+        uint8_t q;
+        int size = _channel->receive(buf, &from, &ts, &q, message->data(), message->size());
         message->_size = size;
         message->_origin = from;
         message->_timestamp = ts;
+        message->_quadrant = q;
 
         if (size <= 0)
             return false;

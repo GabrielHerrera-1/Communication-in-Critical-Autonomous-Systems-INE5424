@@ -205,7 +205,7 @@ public:
     };
 
     // ja é genérico o suficiente, vai servir caso algum dia o gatewaw queira ler mensagens 
-    static int receive(Buffer *buf, Address *from, int64_t *ts, void *data, unsigned int size) {
+    static int receive(Buffer *buf, Address *from, int64_t *ts, uint8_t* quadrant, void *data, unsigned int size) {
         if (!_instance || !buf) return -1;
         if (buf->size() < sizeof(Header)) {
             free_buffer(buf);
@@ -219,6 +219,8 @@ public:
         if (ts) {
             *ts = packet->timestamp();
         }
+
+        *quadrant = packet->quadrant();
 
         unsigned int data_size = buf->size() - sizeof(Header);
         if (data_size > size) data_size = size;
