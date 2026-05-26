@@ -58,9 +58,9 @@ public:
         uint8_t q = Message::QUADRANT_NONE; // default 
         int size = _channel->receive(buf, &from, &ts, &q, message->data(), message->size());
         message->_size = size;
-        message->_origin = from;
+        message->_origin.address = from;
         message->_timestamp = ts;
-        message->_quadrant = q;
+        message->_origin.quadrant = q;
 
         if (size <= 0)
             return false;
