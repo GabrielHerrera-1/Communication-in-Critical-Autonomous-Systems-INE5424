@@ -20,7 +20,7 @@ static const int          VM_COUNT          = 9;
 static const int          FIRST_VEHICLE_VM  = 5;     // vm 1..4 = RSUs; 5..9 = veiculos
 static const int          STARTUP_DELAY_S   = 8;     // espera a pilha/SPTP subir
 static const int          SIM_DURATION_S    = 90;    // duracao da simulacao
-static const unsigned int SEND_INTERVAL_MS  = 500;
+static const unsigned int SEND_INTERVAL_MS  = 1000;
 static const int          SAMPLE_INTERVAL_MS = 1000; // amostragem de quadrante
 static const int          DRAIN_S           = 3;     // drena mensagens finais
 static const int          MIN_RECEIVED      = 8;     // liveness minima 
