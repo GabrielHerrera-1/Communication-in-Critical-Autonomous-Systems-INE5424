@@ -73,9 +73,6 @@ public:
                 return;
             }
 
-            // aqui tem que acontecer um cast pro header do protocol (furando a sequencia padrão da pilha) pra ver se o quadrant ta válido
-            // coleta o quadrant e joga pra um q e passa no should drop da engine, a shm perdoa pq fds então não vai dar problema no repasse do bglh
-            // o stamp do bglh da ida da pra pegar protocol
             uint8_t q = _read_quadrant(buf->data()->payload());
             // o criterio de auto-drop depende da engine usada
             // na shm quadrant é ignorado e read quadrant produz QUADRANT_NONE por padrão
