@@ -55,7 +55,7 @@ public:
 
         typename Channel::Address from;
         int64_t ts = 0;
-        uint8_t q;
+        uint8_t q = Message::QUADRANT_NONE; // default 
         int size = _channel->receive(buf, &from, &ts, &q, message->data(), message->size());
         message->_size = size;
         message->_origin = from;

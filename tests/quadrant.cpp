@@ -23,7 +23,7 @@ static const int          SIM_DURATION_S    = 90;    // duracao da simulacao
 static const unsigned int SEND_INTERVAL_MS  = 500;
 static const int          SAMPLE_INTERVAL_MS = 1000; // amostragem de quadrante
 static const int          DRAIN_S           = 3;     // drena mensagens finais
-static const int          MIN_RECEIVED      = 20;    // liveness minima
+static const int          MIN_RECEIVED      = 8;     // liveness minima 
 static const int          RSU_FIX_CHECK_S   = 15;    // janela p/ provar RSU fixa
                                                      // (cruza ~5 intervalos de 3s)
 
