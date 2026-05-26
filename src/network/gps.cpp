@@ -1,14 +1,17 @@
 #include "gps.h"
 
+// syscalls linux
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+
 #include <cstdio>
 
+// inicializa _fd como -1 (invalido, nenhum device aberto)
 GPS::GPS() : _fd(-1) {
-    // GPS indisponivel (modulo nao carregado): ok() retorna false e a NIC
-    // desabilita filtragem espacial. Nao imprime erro pois e comportamento
-    // esperado nos cenarios sem o modulo GPS.
+    // gps indisponivel (modulo nao carregado): ok() retorna false e a nic
+    // desabilita filtragem espacial. nao imprime erro pois e comportamento
+    // esperado nos cenarios sem o modulo gps
     _fd = ::open("/dev/gps", O_RDWR);
 }
 
@@ -19,6 +22,7 @@ GPS::~GPS() {
     }
 }
 
+// wrapper do ioctl set fixed
 void GPS::set_fixed(bool fixed) {
     if (!fixed || _fd < 0) {
         return; // estado padrao do modulo ja e "se desloca"
@@ -28,6 +32,7 @@ void GPS::set_fixed(bool fixed) {
     }
 }
 
+// wrapper do ioctl get quadrant
 uint8_t GPS::quadrant() {
     if (_fd < 0) {
         return QUADRANT_NONE;
