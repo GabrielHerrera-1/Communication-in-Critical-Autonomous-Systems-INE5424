@@ -14,7 +14,7 @@ public:
     // que a NIC receptora descarte mensagens de outros quadrantes. Por estar
     // no header do frame, o forwarding shm<->raw socket (que ja faz memcpy de
     // HEADER_SIZE bytes) propaga o quadrante de graca.
-    static const unsigned int HEADER_SIZE = 15;
+    static const unsigned int HEADER_SIZE = 14;
     typedef uint16_t Protocol; // nome pro campo ethertype. 2 bytes (16 bits)
 
     class Address {
@@ -94,10 +94,6 @@ public:
         Protocol type() const { return (_type_hi << 8) | _type_lo; }
         // escrita do ethertype. fizemos assim para evitar bugs de endianness
         void type(Protocol p) { _type_hi = (p >> 8) & 0xFF; _type_lo = p & 0xFF; }
-        // Etapa 4: quadrante espacial da origem (0..3, ou 0xFF se GPS ausente).
-        // A NIC carimba no envio e a NIC receptora usa para decidir o drop.
-        uint8_t quadrant() const { return _quadrant; }
-        void quadrant(uint8_t q) { _quadrant = q; }
         // ponteiro pro inicio do payload. é void porque pode ser qualquer coisa no futuro
         void* payload() { return _payload; }
         // versao imutavel
@@ -109,7 +105,6 @@ public:
         Address _dst; // destino
         Address _src; // origem
         uint8_t _type_hi, _type_lo; // bytes mais e menos significativos do campo ethertype
-        uint8_t _quadrant; // Etapa 4: quadrante espacial da origem
         uint8_t _payload[MTU]; // payload de ate 1500 bytes
     };
 

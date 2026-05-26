@@ -30,7 +30,8 @@ protected:
     // Etapa 4: dropamos o que veio com o mesmo MAC da NIC local E o que veio
     // de outro quadrante espacial (sincronizacao espacial por quadrantes).
     bool engine_should_drop_frame(const Ethernet::Frame & frame,
-                                  const Ethernet::Address & local_address) const;
+                                  const Ethernet::Address & local_address,
+                                  const uint8_t & ) const;
 
     // Etapa 4: quadrante espacial da VM, consultado ao modulo de kernel GPS.
     // A NIC carimba esse quadrante em todo frame que envia (alloc).

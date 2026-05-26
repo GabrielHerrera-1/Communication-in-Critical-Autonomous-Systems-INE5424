@@ -63,7 +63,8 @@ public:
     void start_receiving();
     // na SHM o self-drop é decidido pelo writer_slot, não pelo MAC
     bool engine_should_drop_frame(const Ethernet::Frame & frame,
-                                  const Ethernet::Address & local_address) const;
+                                  const Ethernet::Address & local_address,
+                                  const uint8_t & origin_quadrant) const;
 
     // Etapa 4: o trafego intra-veiculo (SHM) NAO tem sincronizacao espacial
     // -- os componentes de um mesmo sistema compartilham a localizacao. Por
