@@ -9,7 +9,12 @@
 class Ethernet {
 public:
     static const unsigned int MTU = 1500; // payload máximo de de um frame ethernet. pertence à classe (static)
-    static const unsigned int HEADER_SIZE = 14; // destino (6) + origem (6) + tipo - protocolo escolhido (2)
+    // destino (6) + origem (6) + tipo/protocolo (2) + quadrante (1).
+    // Etapa 4: o quadrante espacial da origem viaja no header do frame para
+    // que a NIC receptora descarte mensagens de outros quadrantes. Por estar
+    // no header do frame, o forwarding shm<->raw socket (que ja faz memcpy de
+    // HEADER_SIZE bytes) propaga o quadrante de graca.
+    static const unsigned int HEADER_SIZE = 14;
     typedef uint16_t Protocol; // nome pro campo ethertype. 2 bytes (16 bits)
 
     class Address {

@@ -8,6 +8,7 @@
 
 #include "shm_region.h"
 #include "../ethernet.h"
+#include "../gps.h"
 
 class SharedMemoryEngine {
 public:
@@ -62,7 +63,16 @@ public:
     void start_receiving();
     // na SHM o self-drop é decidido pelo writer_slot, não pelo MAC
     bool engine_should_drop_frame(const Ethernet::Frame & frame,
-                                  const Ethernet::Address & local_address) const;
+                                  const Ethernet::Address & local_address,
+                                  const uint8_t & origin_quadrant) const;
+
+    // Etapa 4: o trafego intra-veiculo (SHM) NAO tem sincronizacao espacial
+    // -- os componentes de um mesmo sistema compartilham a localizacao. Por
+    // isso a engine SHM nao tem GPS: devolve QUADRANT_NONE (a NIC nao filtra)
+    // e set_fixed e no-op. Os metodos existem so para o template NIC<Engine>
+    // compilar identico para as duas engines.
+    uint8_t engine_current_quadrant() { return GPS::QUADRANT_NONE; }
+    void engine_set_fixed(bool) {}
     // callback chamado pela engine quando um frame chega.
     // a NIC registra esse callback no construtor dela
     typedef std::function<void(const unsigned char*, size_t)> ReceiveHandler;

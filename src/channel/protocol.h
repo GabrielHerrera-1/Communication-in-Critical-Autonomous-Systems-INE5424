@@ -88,17 +88,21 @@ public:
     class Header {
     public:
         int64_t timestamp() const { return _timestamp; }
-        void timestamp(int64_t ts) { _timestamp = ts; }
         Port src_port() const { return _src_port; }
-        void src_port(Port p) { _src_port = p; }
         Port dst_port() const { return _dst_port; }
-        void dst_port(Port p) { _dst_port = p; }
         PacketKind kind() const { return _kind; }
+        uint8_t quadrant() const { return _quadrant; } 
+    
+        void quadrant(uint8_t q) { _quadrant = q; }
         void kind(PacketKind k) { _kind = k; }
-    private:
+        void dst_port(Port p) { _dst_port = p; }
+        void src_port(Port p) { _src_port = p; }
+        void timestamp(int64_t ts) { _timestamp = ts; }
+    protected:
         int64_t _timestamp; 
         Port _src_port; 
-        Port _dst_port; 
+        Port _dst_port;
+        uint8_t _quadrant; 
         PacketKind _kind; 
     };
 
@@ -133,6 +137,8 @@ public:
             if (SharedMemoryNIC::is_gateway_process()) {
                 _socket_nic = new RawSocketNIC();
                 _socket_nic->attach(this, PROTO);
+                _socket_nic->setup_read_quadrant(&read_quadrant);
+                _socket_nic->setup_write_quadrant(&write_quadrant);
             }
         }
 
@@ -160,6 +166,9 @@ public:
             }
 
             _is_master = is_master;
+            // Etapa 4: a RSU e o unico no com is_master=true. Ela fixa o
+            // quadrante no GPS -- e uma estacao fixa, nao se desloca.
+            _socket_nic->set_fixed(is_master);
             Address own_addr(_socket_nic->address(), 0);
             _sptp = new SPTP_Protocol<Address>(own_addr, _is_master, &Protocol::send);
             _sptp->start();
@@ -196,7 +205,7 @@ public:
     };
 
     // ja é genérico o suficiente, vai servir caso algum dia o gatewaw queira ler mensagens 
-    static int receive(Buffer *buf, Address *from, int64_t *ts, void *data, unsigned int size) {
+    static int receive(Buffer *buf, Address *from, int64_t *ts, uint8_t* quadrant, void *data, unsigned int size) {
         if (!_instance || !buf) return -1;
         if (buf->size() < sizeof(Header)) {
             free_buffer(buf);
@@ -210,6 +219,8 @@ public:
         if (ts) {
             *ts = packet->timestamp();
         }
+
+        *quadrant = packet->quadrant();
 
         unsigned int data_size = buf->size() - sizeof(Header);
         if (data_size > size) data_size = size;
@@ -332,11 +343,20 @@ private:
 
         if (data && size)
             memcpy(packet->template data<unsigned char>(), data, size);
-        // TODO: monotonic_stamp sera?
         int64_t now = Clock::now_ns();
         packet->timestamp(ts != 0 ? ts : now);
         if (tx_ts_out) *tx_ts_out = now;
         return nic->send(buf);
+    }
+
+    static uint8_t read_quadrant(const void* Protocol_payload){
+        const Header* h = reinterpret_cast<const Header*>(Protocol_payload);
+        return h->quadrant();
+    }
+
+    static void write_quadrant(void* Protocol_payload, uint8_t q){
+        Header* h = reinterpret_cast<Header*>(Protocol_payload);
+        h->quadrant(q);
     }
 
 

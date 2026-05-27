@@ -29,6 +29,9 @@ public:
     static constexpr Port PTP                     = 0xF407;
     static constexpr Port TEST_SPTP_SIMPLE_SENDER   = 0xF420;
     static constexpr Port TEST_SPTP_SIMPLE_RECEIVER = 0xF421;
+    // Etapa 4: cenario de sincronizacao espacial por quadrantes
+    static constexpr Port TEST_QUADRANT_SENDER      = 0xF430;
+    static constexpr Port TEST_QUADRANT_RECEIVER    = 0xF431;
 };
 
 #endif

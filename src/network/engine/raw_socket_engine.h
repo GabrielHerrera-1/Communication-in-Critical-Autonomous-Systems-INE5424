@@ -2,6 +2,7 @@
 #define RAW_SOCKET_ENGINE_H
 
 #include "../ethernet.h"
+#include "../gps.h"
 
 #include <functional>
 #include <thread>
@@ -26,16 +27,26 @@ protected:
     // inicia recepção via SIGIO + sigtimedwait.
     // a thread bloqueia esperando o signal, depois drena tudo non-blocking
     void start_receiving();
-    // na ethernet, dropamos o que veio com o mesmo MAC da NIC local
+    // Etapa 4: dropamos o que veio com o mesmo MAC da NIC local E o que veio
+    // de outro quadrante espacial (sincronizacao espacial por quadrantes).
     bool engine_should_drop_frame(const Ethernet::Frame & frame,
-                                  const Ethernet::Address & local_address) const;
+                                  const Ethernet::Address & local_address,
+                                  const uint8_t & ) const;
+
+    // Etapa 4: quadrante espacial da VM, consultado ao modulo de kernel GPS.
+    // A NIC carimba esse quadrante em todo frame que envia (alloc).
+    uint8_t engine_current_quadrant() { return _gps.quadrant(); }
+    // RSU (is_master=true) fixa o quadrante: nao se desloca.
+    void engine_set_fixed(bool fixed) { _gps.set_fixed(fixed); }
 
 private:
     ReceiveHandler _on_receive;
     int _sockfd{-1};
     int _ifindex{0};
     std::thread _worker;
-    std::atomic<int> _running{0};
+    std::atomic<bool> _running{false};
+    // mutable: engine_should_drop_frame e const mas precisa consultar o GPS
+    mutable GPS _gps;
 };
 
 #endif

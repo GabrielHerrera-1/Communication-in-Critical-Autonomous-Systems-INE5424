@@ -46,13 +46,12 @@ public:
           _pending_seq(0),
           _next_seq(1),
           _last_sync_steady_ns(0),
-          _max_silence_s(load_max_silence()),
-          _running(false) {}
+          _max_silence_s(load_max_silence()) {}
 
     ~SPTP_Protocol() { stop(); }
 
-    // resync periodica, so no slave. thread vigia ha quanto tempo nao recebe sync, se passar de _max_silence_s,
-    // dispara um novo round-trip. slave tambem pede sync imediata ao ligar
+    // resync periodica, so no slave. thread vigia quanto tempo nao recebe sync
+    // e dispara novo request se passou _max_silence_s sem sincronizacao.
     void start() {
         if (_is_master) return;
 
@@ -65,21 +64,20 @@ public:
 
         _silence_worker = std::thread([this]() {
             using namespace std::chrono;
-            auto sleep_for = duration<double>(_max_silence_s);
+            const auto poll = seconds(1);
+
             while (_running.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(poll);
+
+                if (!_running.load(std::memory_order_acquire)) break;
+
                 if (!_first_sync_done.load(std::memory_order_acquire)) {
                     // retry rapido enquanto ainda nao houve sincronizacao
-                    // valida
-                    std::this_thread::sleep_for(milliseconds(Cfg::INITIAL_RETRY_MS));
-                    if (_running.load(std::memory_order_acquire)
-                        && !_first_sync_done.load(std::memory_order_acquire)) {
-                        send_sync_request();
-                    }
+                    send_sync_request();
                     continue;
                 }
 
-                std::this_thread::sleep_for(sleep_for);
-
+                // watchdog de silencio
                 int64_t now  = steady_now_ns();
                 int64_t last = _last_sync_steady_ns.load(std::memory_order_acquire);
                 double elapsed_s = static_cast<double>(now - last) / 1e9;
@@ -267,7 +265,7 @@ private:
     std::atomic<int64_t>  _last_sync_steady_ns; // steady_clock na ultima aplicacao
     double  _max_silence_s;              // periodo da ressincronizacao automatica
 
-    std::atomic<int>  _running;
+    std::atomic<bool> _running{false};
     std::thread       _silence_worker;
     std::atomic<int>  _sync_count{0};
     // sinaliza para o watchdog que ja houve pelo menos uma medicao nao-outlier

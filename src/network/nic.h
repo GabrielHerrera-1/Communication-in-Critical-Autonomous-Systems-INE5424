@@ -2,6 +2,7 @@
 #define NIC_H
 
 #include "ethernet.h"
+#include "gps.h"
 #include "../core/observers/conditional_data_observer.h"
 #include "../core/buffer.h"
 #include "../core/traits.h"
@@ -24,6 +25,16 @@ public:
     typedef Ethernet::Protocol Protocol_Number;
     typedef Conditional_Data_Observer<Buffer<Ethernet::Frame>, Ethernet::Protocol> Observer;
     typedef Conditionally_Data_Observed<Buffer<Ethernet::Frame>, Ethernet::Protocol> Observed;
+    typedef uint8_t (*read_quadrant)(const void* Protocol_payload);
+    typedef void (*write_quadrant)(void* Protocol_payload, uint8_t q);
+
+    void setup_read_quadrant(read_quadrant rq){
+        _read_quadrant = rq;
+    }
+
+    void setup_write_quadrant(write_quadrant wq){
+        _write_quadrant = wq;
+    }
 
     static bool is_gateway_process() {
         return Engine::is_gateway_process();
@@ -62,8 +73,10 @@ public:
                 return;
             }
 
+            uint8_t q = _read_quadrant(buf->data()->payload());
             // o criterio de auto-drop depende da engine usada
-            if (Engine::engine_should_drop_frame(*frame, _address)) {
+            // na shm quadrant é ignorado e read quadrant produz QUADRANT_NONE por padrão
+            if (Engine::engine_should_drop_frame(*frame, _address, q)) {
                 free(buf);
                 return;
             }
@@ -77,6 +90,9 @@ public:
             if (!Observed::notify(prot, buf))
                 free(buf);
         });
+
+        _read_quadrant = [](const void* payload) -> uint8_t {return 0xFF;};
+        _write_quadrant = [](void* payload, uint8_t q) -> void {return;};
     }
 
     ~NIC() {
@@ -100,11 +116,20 @@ public:
         memcpy(f->dst().raw(), dst.raw(), 6);
         memcpy(f->src().raw(), _address.raw(), 6);
         f->type(prot);
+        // Etapa 4: todo envio pergunta "em qual quadrante estou" para a
+        // engine (que consulta o modulo de kernel GPS) e carimba o quadrante
+        // da origem no header do frame.
         return buf;
     };
 
+    // Etapa 4: RSU (is_master=true) fixa o quadrante -- nao se desloca.
+    void set_fixed(bool fixed) { Engine::engine_set_fixed(fixed); }
+
     // envia o frame montado pelo engine e libera o buffer
     int send(Buffer<Ethernet::Frame> *buf) {
+        // não tem risco de a shm nic escrever um vazio num quadrant válido pois ela nunca recebe
+        // a função de como reeescreve o quadrant (_write_quadrant é o default pra shm)
+        _write_quadrant(buf->data()->payload(), Engine::engine_current_quadrant());
         int bytes = Engine::engine_send(buf->data(), Ethernet::HEADER_SIZE + buf->size());
         if (bytes > 0) {
             _statistics.tx_packets++;
@@ -166,6 +191,8 @@ private:
     Statistics _statistics;
     Buffer<Ethernet::Frame> _buffer[BUFFER_SIZE];
     std::stack<unsigned int> _free_list;
+    read_quadrant _read_quadrant;
+    write_quadrant _write_quadrant;
 };
 
 #endif

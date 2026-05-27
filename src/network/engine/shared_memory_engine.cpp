@@ -242,7 +242,8 @@ void SharedMemoryEngine::engine_get_address(unsigned char * mac) {
 }
 
 bool SharedMemoryEngine::engine_should_drop_frame(const Ethernet::Frame &,
-                                                  const Ethernet::Address &) const {
+                                                  const Ethernet::Address &,
+                                                  const uint8_t & origin_quadrant) const {
     // self-drop e feito em slot_targets_me
     return false;
 }
