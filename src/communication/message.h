@@ -7,8 +7,14 @@
 
 class Message {
 public:
-    class Origin
-    {
+
+    enum Type : uint8_t {
+        TYPE_STANDARD = 0x00,
+        // time-triggerd publish-subscribe
+        TYPE_TTPS     = 0x01
+    };
+
+    class Origin{
     public:
         Origin(){}
 
@@ -22,22 +28,26 @@ public:
         uint8_t quadrant;   
 
     };
-    
 
-    // acessa os campos privados pra escreve nos campos readonly do usuário
+    struct Header {
+        Origin origin;
+        int64_t timestamp = 0;
+        // default value, as for not to breake current tests
+        uint8_t type = TYPE_STANDARD;
+    };
+    
     template <typename Channel>
     friend class Communicator;
 
     static const unsigned int MAX_SIZE = 1400;
-    // Etapa 4: quadrante "desconhecido" (GPS ausente / mensagem intra-veiculo)
     static const uint8_t QUADRANT_NONE = 0xFF;
 
-    Message() : _origin(), _timestamp(0), _size(MAX_SIZE) {
+    Message() : _header(), _size(MAX_SIZE) {
         memset(_payload, 0, sizeof(_payload));
     }
 
     Message(const void* data, unsigned int size)
-        : _origin(), _timestamp(0), _size(0) {
+        : _header(), _size(0) {
         memset(_payload, 0, sizeof(_payload));
         if (data && size > 0) {
             _size = (size <= MAX_SIZE) ? size : MAX_SIZE;
@@ -64,23 +74,23 @@ public:
     }
 
     const Origin & origin() const {
-        return _origin;
+        return _header.origin;
     }
 
     int64_t timestamp() const {
-        return _timestamp;
+        return _header.timestamp;
     }
     
-    // Etapa 4: quadrante espacial da origem, etiquetado na mensagem.
-    // QUADRANT_NONE quando a mensagem e intra-veiculo (SHM) ou quando o GPS
-    // nao estava disponivel na origem.
     uint8_t quadrant() const {
-        return _origin.quadrant;
+        return _header.origin.quadrant;
+    }
+    
+    uint8_t type() const{
+        return _header.type;
     }
 
 private:
-    Origin _origin;
-    int64_t _timestamp;
+    Header _header;
     unsigned char _payload[MAX_SIZE];
     unsigned int _size;
 };
