@@ -7,6 +7,13 @@
 
 class Message {
 public:
+
+    enum Type : uint8_t {
+        TYPE_STANDARD = 0x00,
+        // time-triggerd publish-subscribe
+        TYPE_TTPS     = 0x01
+    };
+
     class Origin{
     public:
         Origin(){}
@@ -24,7 +31,9 @@ public:
 
     struct Header {
         Origin origin;
-        int64_t timestamp;
+        int64_t timestamp = 0;
+        // default value, as for not to breake current tests
+        uint8_t type = TYPE_STANDARD;
     };
     
     template <typename Channel>
@@ -74,6 +83,10 @@ public:
     
     uint8_t quadrant() const {
         return _header.origin.quadrant;
+    }
+    
+    uint8_t type() const{
+        return _header.type;
     }
 
 private:
