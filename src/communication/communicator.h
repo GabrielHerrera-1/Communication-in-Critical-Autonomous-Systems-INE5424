@@ -1,7 +1,7 @@
 #ifndef COMUNICATOR_H
 #define COMUNICATOR_H
 
-#include "message.h"
+#include "message/message.h"
 #include "../core/clock.h"
 #include "../core/observers/concurrent_observer.h"
 
@@ -69,12 +69,11 @@ public:
     }
 
 
-private:
-    void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) {
+protected:
+    void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) override {
         Observer::update(c, buf);
     }
 
-private:
     Channel * _channel;
     Address _address;
     Address _broadcast_address;

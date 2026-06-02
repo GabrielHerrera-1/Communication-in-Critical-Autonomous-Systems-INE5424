@@ -3,15 +3,14 @@
 	
 #include <cstring>
 #include <cstdint>
-#include "../application/vehicle_protocol.h"
+#include "../../channel/vehicle_protocol.h"
 
 class Message {
 public:
 
     enum Type : uint8_t {
-        TYPE_STANDARD = 0x00,
-        // time-triggerd publish-subscribe
-        TYPE_TTPS     = 0x01
+        STANDARD = 0x00,
+        INTEREST = 0x01
     };
 
     class Origin{
@@ -33,7 +32,7 @@ public:
         Origin origin;
         int64_t timestamp = 0;
         // default value, as for not to breake current tests
-        uint8_t type = TYPE_STANDARD;
+        uint8_t type = STANDARD;
     };
     
     template <typename Channel>
