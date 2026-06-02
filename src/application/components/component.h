@@ -5,7 +5,7 @@
 #include <string>
 
 #include "../component_ports.h"
-#include "../vehicle_protocol.h"
+#include "../../channel/vehicle_protocol.h"
 #include "../../communication/communicator.h"
 
 // classe base abstrata para qualquer componente do veiculo (sensor ou atuador)

@@ -6,7 +6,7 @@
 #include "../network/engine/raw_socket_engine.h"
 #include "../channel/protocol.h"
 #include "gateway.h"
-#include "vehicle_protocol.h"
+#include "../channel/vehicle_protocol.h"
 #include "components/component.h"
 #include <vector>
 #include <sys/types.h>

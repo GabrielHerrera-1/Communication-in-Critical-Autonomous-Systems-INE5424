@@ -2,11 +2,21 @@
 #define MESSAGE_HEADER_H
 
 #include "../../channel/vehicle_protocol.h"
-#include "../communicator.h"
 
 class MessageHeader {
-    friend class Communicator;
 public:
+
+    MessageHeader():
+        _size(MAX_SIZE),
+        _type(STANDARD)
+    {}
+
+    MessageHeader(unsigned int size):
+        _size(size),
+        _type(STANDARD)
+    {}
+
+    ~MessageHeader(){}
 
     enum Type : uint8_t {
         STANDARD = 0x00,
@@ -28,37 +38,62 @@ public:
 
     };
 
-    unsigned int size();
+    static const unsigned int MAX_SIZE = 1400;
+    static const uint8_t QUADRANT_NONE = 0xFF;
 
-    const Origin & origin();
+    unsigned int size(){
+        return _size;
+    }
 
-    Vehicle_Protocol::Address address();
+    const Origin & origin(){
+        return _origin;
+    }
 
-    uint8_t quadrant() const;
+    Vehicle_Protocol::Address address(){
+        return _origin.address;
+    }
 
-    int64_t timestamp() const;
+    uint8_t quadrant(){
+        return _origin.quadrant;
+    }
+
+    int64_t timestamp(){
+        return _timestamp;
+    }
     
-    uint8_t type() const;
+    uint8_t type(){
+        return _type;
+    }
+
+    void type(uint8_t type){
+        _type = type;
+    }
+
+    void size(unsigned int size){
+        _size = size;
+    }
 
 protected:
 
-    void size(unsigned int);
+    void origin(Origin & origin){
+        _origin = origin;
+    }
 
-    void origin(Origin & origin);
+    void address(Vehicle_Protocol::Address addr){
+        _origin.address = addr;
+    }
 
-    void address(Vehicle_Protocol::Address addr);
+    void quadrant(uint8_t q){
+        _origin.quadrant = q;
+    }
 
-    void quadrant(uint8_t quadrant);
+    void timestamp(int64_t timestamp){
+        _timestamp = timestamp;
+    }
 
-    void timestamp(int64_t timestamp);
-    
-    void type(uint8_t type);
-
-private:
-
-    Origin origin;
-    int64_t timestamp = 0;
-    uint8_t type = STANDARD;
+    Origin _origin;
+    int64_t _timestamp;
+    uint8_t _type = STANDARD;
     unsigned int _size;
 
 };

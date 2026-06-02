@@ -39,10 +39,10 @@ public:
 
     // TODO: tirei o const pra colocar o timestamp aqui, ver se é necessario msm
     bool send(Message * message) {
-        message->_header.timestamp = Clock::monotonic_stamp();
+        message->timestamp(Clock::monotonic_stamp());
         return (_channel->send(_address, Address::logical_broadcast(),
                                message->data(), message->size(),
-                               message->_header.timestamp) > 0);
+                               message->timestamp()) > 0);
     }
 
     bool receive(Message * message) {
@@ -57,10 +57,10 @@ public:
         int64_t ts = 0;
         uint8_t q = Message::QUADRANT_NONE; // default 
         int size = _channel->receive(buf, &from, &ts, &q, message->data(), message->size());
-        message->_size = size;
-        message->_header.origin.address = from;
-        message->_header.timestamp = ts;
-        message->_header.origin.quadrant = q;
+        message->size(size);
+        message->address(from);
+        message->timestamp(ts);
+        message->quadrant(q);
 
         if (size <= 0)
             return false;
@@ -70,7 +70,7 @@ public:
 
 
 protected:
-    void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) override {
+    void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) {
         Observer::update(c, buf);
     }
 

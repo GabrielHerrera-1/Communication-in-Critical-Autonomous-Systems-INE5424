@@ -1,6 +1,6 @@
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
-#include "../src/communication/message.h"
+#include "../src/communication/message/message.h"
 #include "../src/network/gps.h"
 #include "../src/application/rsu.h"
 

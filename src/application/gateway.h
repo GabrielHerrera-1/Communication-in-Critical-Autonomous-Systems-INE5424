@@ -2,7 +2,7 @@
 #define GATEWAY_H
 
 #include "components/component.h"
-#include "vehicle_protocol.h"
+#include "../channel/vehicle_protocol.h"
 #include "../network/engine/shared_memory_engine.h"
 
 #include <memory>
