@@ -6,34 +6,45 @@
 #include "../../channel/vehicle_protocol.h"
 #include "./message_header.h"
 
-class Message : public MessageHeader{
+struct RawPayload {
+    unsigned char data[MessageHeader::MAX_SIZE];
+};
+
+template <typename PayloadType = RawPayload>
+class TypedMessage : public MessageHeader{
 public:
     
     template <typename Channel>
     friend class Communicator;
 
-    Message(): MessageHeader(){
-        memset(_payload, 0, sizeof(_payload));
+    TypedMessage(): MessageHeader(){
+        memset(&_payload, 0, sizeof(_payload));
     }
 
-    Message(const void* data, unsigned int size): MessageHeader(size){
-        memset(_payload, 0, sizeof(_payload));
+    TypedMessage(const void* data, unsigned int size): MessageHeader(size){
+        memset(&_payload, 0, sizeof(_payload));
         if (data && size > 0) {
             _size = (size <= MAX_SIZE) ? size : MAX_SIZE;
-            memcpy(_payload, data, _size);
-        }
+            memcpy(&_payload, data, _size);
+        }   
     }
 
-    const void* data() const {
-        return _payload;
+    TypedMessage(const PayloadType& customPayload) : MessageHeader(sizeof(PayloadType)) {
+        _payload = customPayload;
     }
 
-    void* data() {
-        return _payload;
-    }
+    const void* data() const { return &_payload; }
+
+    void* data() { return &_payload; }
+
+    const PayloadType& payload() const { return _payload; }
+
+    PayloadType& payload() { return _payload; }
 
 private:
-    unsigned char _payload[MAX_SIZE];
+    PayloadType _payload;
 };
+
+using Message = TypedMessage<RawPayload>;
 
 #endif
