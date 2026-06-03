@@ -246,6 +246,14 @@ public:
         _observed.detach(obs, address.port());
     };
 
+    static void attach(Observer *obs, Port port) {
+        _observed.attach(obs, port);
+    };
+
+    static void detach(Observer *obs, Port port) {
+        _observed.detach(obs, port);
+    };
+
 private:
     void update(typename SharedMemoryNIC::Protocol_Number prot, Buffer *buf)
     {

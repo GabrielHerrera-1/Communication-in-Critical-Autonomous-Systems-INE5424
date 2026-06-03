@@ -70,6 +70,15 @@ public:
 
 
 protected:
+
+    Communicator(Channel * channel, Channel::Port port)
+        : Observer(),
+          _channel(channel),
+          _broadcast_address(Address::logical_broadcast()),
+          _subscribed_to_broadcast(subscribe_broadcast) {
+        _address = _channel->create_address(port)
+    }
+
     void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) {
         Observer::update(c, buf);
     }
