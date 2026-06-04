@@ -310,7 +310,16 @@ private:
                     _shm_nic.send(fwd_buf);
                 }
 
-                free_buffer(buf);
+                // Etapa 5: alem de repassar para a SHM (componentes em outros
+                // processos), entrega tambem aos observers LOCAIS deste processo.
+                // Em um veiculo, o processo gateway nao tem Communicator de
+                // aplicacao -> _observed esta vazio e isto vira no-op (free,
+                // identico ao comportamento anterior). Na RSU, permite a um
+                // Communicator no proprio processo gateway (rastreador passivo de
+                // interesses) ouvir os frames vindos da rede -- a SHM nao faz
+                // loopback para o writer, entao sem isto a RSU nao os veria.
+                bool notified = _observed.notify(packet->dst_port(), buf);
+                if (!notified) free_buffer(buf);
                 return;
             }
         }

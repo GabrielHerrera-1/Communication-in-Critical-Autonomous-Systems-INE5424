@@ -72,12 +72,20 @@ public:
 
 protected:
 
-    Communicator(Channel * channel, Channel::Port port)
+    // Construtor por Port: deriva o Address chamando create_address(port).
+    // Protegido para uso de subclasses (ex.: SmartData/Publisher) que conhecem a
+    // porta logica em vez de um Address ja montado. Espelha o construtor publico
+    // (attach na propria porta + opcionalmente no broadcast logico).
+    Communicator(Channel * channel, typename Channel::Port port, bool subscribe_broadcast = true)
         : Observer(),
           _channel(channel),
+          _address(channel->create_address(port)),
           _broadcast_address(Address::logical_broadcast()),
           _subscribed_to_broadcast(subscribe_broadcast) {
-        _address = _channel->create_address(port)
+        _channel->attach(this, _address);
+        if (_subscribed_to_broadcast) {
+            _channel->attach(this, _broadcast_address);
+        }
     }
 
     void update(typename Channel::Observer::Observing_Condition c, Buffer * buf) {

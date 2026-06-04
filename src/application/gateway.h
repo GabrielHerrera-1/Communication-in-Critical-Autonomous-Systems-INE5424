@@ -22,6 +22,10 @@ public:
     Port logical_port() const override;
     void stop();
 
+    // Etapa 5: expoe o Protocol para a RSU criar um Communicator no proprio
+    // processo gateway (rastreador passivo de interesses).
+    Vehicle_Protocol * protocol() { return _protocol.get(); }
+
 private:
     SharedMemoryEngine::Context _context;
     bool _is_master = false;

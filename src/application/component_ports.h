@@ -32,6 +32,9 @@ public:
     // Etapa 4: cenario de sincronizacao espacial por quadrantes
     static constexpr Port TEST_QUADRANT_SENDER      = 0xF430;
     static constexpr Port TEST_QUADRANT_RECEIVER    = 0xF431;
+    // Etapa 5: cenarios Interesse/Resposta (publish-subscribe time-triggered)
+    static constexpr Port TEST_INTEREST_PUB         = 0xF501;
+    static constexpr Port TEST_INTEREST_SUB         = 0xF502;
 };
 
 #endif

@@ -1,11 +1,36 @@
 #include "rsu.h"
 #include "../core/rt_priority.h"
 #include "../network/engine/shared_memory_engine.h"
+#include "../communication/communicator.h"
+#include "../communication/smart_data/interest_tracker.h"
+#include "component_ports.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <sys/wait.h>
 #include <unistd.h>
+
+namespace {
+// Le so2.rsu_repeat_us=<us> do /proc/cmdline (a VM nao herda env do host; a
+// configuracao chega pela linha de comando do kernel, como so2.vm_id). Retorna
+// 0 se ausente -> rastreamento passivo desligado.
+uint64_t read_rsu_repeat_us() {
+    FILE * f = std::fopen("/proc/cmdline", "r");
+    if (!f) return 0;
+    char line[4096];
+    if (!std::fgets(line, sizeof(line), f)) { std::fclose(f); return 0; }
+    std::fclose(f);
+    for (char * tok = std::strtok(line, " "); tok; tok = std::strtok(nullptr, " ")) {
+        unsigned long long v = 0;
+        if (std::sscanf(tok, "so2.rsu_repeat_us=%llu", &v) == 1)
+            return static_cast<uint64_t>(v);
+    }
+    return 0;
+}
+} // namespace
 
 RSU::RSU() {}
 RSU::~RSU() {}
@@ -32,6 +57,21 @@ int RSU::run_gateway_process() {
     _gateway.run();
 
     std::cout << "[RSU] master SPTP pronto. cenario validado." << std::endl;
+
+    // Etapa 5 (rastreamento passivo): se SO2_RSU_REPEAT_US estiver setado, a RSU
+    // escuta os interesses que passam e os reenvia periodicamente em broadcast,
+    // cobrindo late joiners e perda sem o subscriber precisar reenviar.
+    uint64_t repeat_us = read_rsu_repeat_us();
+    if (repeat_us > 0 && _gateway.protocol()) {
+        std::cout << "[RSU] rastreamento passivo de interesses ativo (repeat_us="
+                  << repeat_us << ")" << std::endl;
+        Communicator<Vehicle_Protocol> comm(
+            _gateway.protocol(),
+            _gateway.protocol()->create_address(Component_Ports::GATEWAY),
+            true);
+        Interest_Tracker tracker(&comm, repeat_us);
+        tracker.serve(); // bloqueia: substitui o pause() abaixo
+    }
 
     // Mantem o processo vivo para que as threads de fundo do Protocol
     // (SHM recv, raw socket recv, SPTP) continuem atendendo slaves.

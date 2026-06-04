@@ -17,6 +17,8 @@ EXPECTED_SEND=${5:-}
 EXPECTED_RECEIVE=${6:-}
 TIMEOUT_SEC=${TIMEOUT_SEC:-180}
 QEMU_CPU=${QEMU_CPU:-default}
+QEMU_MEM=${QEMU_MEM:-512}
+APPEND_CMDLINE=${APPEND_CMDLINE:-}
 QEMU_BIN=${QEMU_BIN:-qemu-system-x86_64}
 QEMU_MACHINE=${QEMU_MACHINE:-}
 QEMU_NET_DEV=${QEMU_NET_DEV:-}
@@ -296,10 +298,10 @@ while [ "$vm_index" -le "$VM_COUNT" ]; do
     "$QEMU_BIN" \
         $MACHINE_ARGS \
         -nographic \
-        -m 512 \
+        -m "$QEMU_MEM" \
         -kernel "$KERNEL" \
         -initrd "$INITRAMFS_PATH" \
-        -append "root=/dev/ram rw console=ttyS0 so2.vm_id=$vm_index" \
+        -append "root=/dev/ram rw console=ttyS0 so2.vm_id=$vm_index $APPEND_CMDLINE" \
         -netdev socket,id=vlan0,mcast=230.0.0.1:"$MCAST_PORT" \
         -device "$QEMU_NET_DEV",netdev=vlan0,mac=52:54:00:12:34:"$mac_suffix" \
         -serial file:"$LOG_DIR/vm${vm_index}.log" \
