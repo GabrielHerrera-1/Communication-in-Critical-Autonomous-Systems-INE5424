@@ -99,7 +99,10 @@ public:
         _cache.reset(); // para as threads de resposta + reaper
     }
 
+protected:
     // ===================== PUSH: notificacao do Protocol =====================
+    // Override do update() do Communicator: NAO empilha na fila do
+    // Concurrent_Observer; le e interpreta a mensagem (Interesse/Resposta) aqui.
     void update(typename Base::Condition /*c*/, typename Base::Buffer * buf) override {
         unsigned char payload[Vehicle_Protocol::MTU];
         Address from;
@@ -137,6 +140,7 @@ public:
         }
     }
 
+public:
     // ===================== lado INTERESSADO =====================
     operator Value() const { return value(); }
 

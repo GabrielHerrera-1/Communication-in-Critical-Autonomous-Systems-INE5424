@@ -32,11 +32,8 @@ public:
 
     typedef typename SharedMemoryNIC::Address Physical_Address;
     typedef uint16_t Port;
-    // App-side usa o Conditional_Data_Observer: update() e virtual (com a porta
-    // como condicao), permitindo ao SmartData sobrescreve-lo e interpretar a
-    // mensagem na hora (push), enquanto o Communicator base enfileira (legado).
-    typedef Conditional_Data_Observer<Buffer, Port> Observer;
-    typedef Conditionally_Data_Observed<Buffer, Port> Observed;
+    typedef Concurrent_Observer<Buffer, Port> Observer;
+    typedef Concurrent_Observed<Buffer, Port> Observed;
 
     // address aqui é um endereco composto: mac + porta
     class Address {

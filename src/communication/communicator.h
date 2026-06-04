@@ -3,28 +3,25 @@
 
 #include "message/message.h"
 #include "../core/clock.h"
-#include "../core/observers/conditional_data_observer.h"
-#include "../core/posix_semaphore.h"
-#include <queue>
-#include <mutex>
+#include "../core/observers/concurrent_observer.h"
 
-// O Communicator e um Conditional_Data_Observer: o canal (Protocol) o notifica
-// via update(condicao, buffer), onde a condicao e a porta. O update() PADRAO
-// enfileira o buffer para o receive() bloqueante (modelo classico, usado pelos
-// testes legados). Subclasses (ex.: SmartData) SOBRESCREVEM update() para ler e
-// interpretar a mensagem na hora -- modelo push, sem thread/laco de drenagem.
+// O Communicator e um Concurrent_Observer: o canal (Protocol) o notifica via
+// update(). O update() PADRAO (protected) empilha o buffer na fila do
+// Concurrent_Observer, drenada pelo receive() bloqueante -- modelo classico,
+// usado pelos testes legados. Subclasses (ex.: SmartData) SOBRESCREVEM update()
+// para interpretar a mensagem na hora, SEM empilhar na fila do Concurrent_Observer.
 //
-// Attach/detach do canal sao explicitos (attach_channel/detach_channel). O ctor
-// publico (Address) ja faz attach. Subclasses usam o ctor protegido (Port), que
-// NAO faz attach, e chamam attach_channel() so DEPOIS de inicializar seus
-// membros -- senao um update() virtual poderia chegar antes da subclasse
-// existir. Simetricamente, a subclasse chama detach_channel() no inicio do seu
-// destrutor, antes de destruir seus membros.
+// Attach/detach do canal sao explicitos: o ctor publico (Address) ja faz attach;
+// o ctor protegido (Port) NAO, para que subclasses chamem attach_channel() so
+// depois de inicializar seus membros (senao um update() virtual poderia chegar
+// antes da subclasse existir). O destrutor da subclasse chama detach_channel()
+// antes de destruir seus membros.
 template <typename Channel>
 class Communicator : public Channel::Observer {
 public:
     typedef typename Channel::Buffer Buffer;
     typedef typename Channel::Address Address;
+    typedef typename Channel::Observer Observer; // = Concurrent_Observer<Buffer, Port>
     typedef typename Channel::Observer::Observing_Condition Condition;
 
     Communicator(Channel * channel, Address address, bool subscribe_broadcast = true)
@@ -49,15 +46,7 @@ public:
 
     template <typename Payload>
     bool receive(TypedMessage<Payload> * message) {
-        _rx_sem.p(); // bloqueia ate update() enfileirar um buffer
-
-        Buffer * buf = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(_rx_mtx);
-            if (_rx_queue.empty()) return false;
-            buf = _rx_queue.front();
-            _rx_queue.pop();
-        }
+        Buffer * buf = Observer::updated(); // drena a fila do Concurrent_Observer
         if (!buf) return false;
 
         Address from;
@@ -72,16 +61,6 @@ public:
         return size > 0;
     }
 
-    // Notificacao do canal (roda na thread de recepcao do Protocol). Default:
-    // enfileira para o receive() bloqueante. SmartData sobrescreve para parsear.
-    void update(Condition /*c*/, Buffer * buf) override {
-        {
-            std::lock_guard<std::mutex> lock(_rx_mtx);
-            _rx_queue.push(buf);
-        }
-        _rx_sem.v();
-    }
-
 protected:
     // Ctor por Port (subclasses): deriva o Address via create_address e NAO faz
     // attach. A subclasse chama attach_channel() ao fim do seu construtor.
@@ -90,6 +69,13 @@ protected:
           _address(channel->create_address(port)),
           _broadcast_address(Address::logical_broadcast()),
           _subscribed_to_broadcast(subscribe_broadcast) {}
+
+    // Notificacao do canal. Default: empilha na fila do Concurrent_Observer
+    // (chamada qualificada = nao-virtual). E um override do Concurrent_Observer::
+    // update (agora virtual); SmartData sobrescreve para NAO empilhar.
+    void update(Condition c, Buffer * buf) override {
+        Observer::update(c, buf);
+    }
 
     void attach_channel() {
         if (_attached) return;
@@ -110,11 +96,6 @@ protected:
     Address _broadcast_address;
     bool _subscribed_to_broadcast;
     bool _attached = false;
-
-private:
-    Semaphore _rx_sem{0};
-    std::mutex _rx_mtx;
-    std::queue<Buffer *> _rx_queue;
 };
 
 #endif

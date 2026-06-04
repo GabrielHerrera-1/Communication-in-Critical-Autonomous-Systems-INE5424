@@ -24,9 +24,13 @@ public:
 
     Concurrent_Observer(): _semaphore(0) {}
 
-    ~Concurrent_Observer() {}
+    virtual ~Concurrent_Observer() {}
 
-    void update(C c, D * d) {
+    // virtual para que subclasses (ex.: SmartData, via Communicator) possam
+    // sobrescrever e interpretar a mensagem na hora, em vez de empilhar. O
+    // notify() do Concurrent_Observed chama isto por um Concurrent_Observer*,
+    // entao precisa ser virtual para o override ser despachado.
+    virtual void update(C c, D * d) {
         // lock_guard em vez de lock/unlock manual: se funcao lançar exceção,
         // o destrutor do lock_guard garante que o mutex é destravado
         std::lock_guard<std::mutex> lock(_mtx);
