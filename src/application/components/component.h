@@ -27,15 +27,23 @@ public:
     // podem sobrescrever isso para evitar acumular mensagens que nunca serao lidas.
     virtual bool subscribe_logical_broadcast() const { return true; }
 
+    // Componentes que usam SmartData criam seu proprio observer (o SmartData e
+    // um Communicator) e dispensam o Communicator bruto do Vehicle. Retornando
+    // false, o Vehicle so injeta o canal (set_channel) e nao cria/anexa um
+    // Communicator -- evitando dois observers na mesma porta de broadcast.
+    virtual bool wants_raw_communicator() const { return true; }
+
     const std::string& id() const;
 
     void set_communicator(Communicator<Vehicle_Protocol> * communicator);
+    void set_channel(Vehicle_Protocol * channel) { _channel = channel; }
     void set_port(Port port);
 
 protected:
     std::string _id;
     Port _port;
     Communicator<Vehicle_Protocol> * _communicator;
+    Vehicle_Protocol * _channel = nullptr;
 
 };
 

@@ -1,7 +1,6 @@
 #ifndef INTEREST_TRACKER_H
 #define INTEREST_TRACKER_H
 
-#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -16,55 +15,53 @@
 #include "smart_message.h"
 #include "unit.h"
 
-// Rastreamento passivo de interesses na RSU (anotacao: "a RSU ouviu os
-// interesses, ela pode repetir os interesses").
+// Rastreamento passivo de interesses na RSU ("a RSU ouviu os interesses, ela
+// pode repetir os interesses").
 //
-// A RSU e uma estacao fixa que escuta passivamente todo o trafego. O tracker
-// registra os interesses que passam (por Unit) e os REENVIA periodicamente em
-// broadcast. Isso cobre dois casos sem exigir que o subscriber fique reenviando:
-//   - um produtor que entra DEPOIS (late joiner) aprende o interesse vigente;
-//   - perda do interesse original e recuperada pela repeticao.
-//
-// E generico (nao parametrizado por tipo): rastreia qualquer Unit. Diferente do
-// SmartData, nao filtra por uma Unit especifica.
-class Interest_Tracker {
+// E um Communicator: o update() (push) registra cada Interesse que passa (por
+// Unit) e os reenvia periodicamente em broadcast. Cobre late joiners e perda
+// sem o subscriber precisar reenviar. Generico: rastreia qualquer Unit.
+class Interest_Tracker : public Communicator<Vehicle_Protocol> {
 public:
-    using Comm = Communicator<Vehicle_Protocol>;
+    using Base    = Communicator<Vehicle_Protocol>;
+    using Address = Vehicle_Protocol::Address;
+    using Port    = Vehicle_Protocol::Port;
 
-    Interest_Tracker(Comm * comm, uint64_t repeat_us)
-        : _comm(comm), _running(true) {
+    Interest_Tracker(Vehicle_Protocol * channel, Port port, uint64_t repeat_us)
+        : Base(channel, port, /*subscribe_broadcast=*/true) {
+        this->attach_channel();
         _repeater = std::make_unique<Periodic_Thread>(
             repeat_us, [this] { repeat_all(); });
     }
 
-    ~Interest_Tracker() {
-        _running.store(false, std::memory_order_release);
+    ~Interest_Tracker() override {
+        this->detach_channel();
         _repeater.reset();
     }
 
-    // Laco foreground: escuta interesses e os registra. Nao retorna.
-    void serve() {
-        Message raw;
-        while (_running.load(std::memory_order_acquire)) {
-            if (!_comm->receive(&raw)) continue;
-            if (raw.size() < sizeof(SmartHeader)) continue;
-            const SmartHeader * h = reinterpret_cast<const SmartHeader *>(raw.data());
-            if (h->kind != SmartHeader::INTEREST) continue; // ignora respostas
-            if (raw.size() < sizeof(InterestMessage)) continue;
+    // push: registra interesses ouvidos (ignora respostas).
+    void update(typename Base::Condition /*c*/, typename Base::Buffer * buf) override {
+        unsigned char payload[Vehicle_Protocol::MTU];
+        Address from;
+        int64_t ts = 0;
+        uint8_t q = MessageHeader::QUADRANT_NONE;
+        int size = this->_channel->receive(buf, &from, &ts, &q, payload, sizeof(payload));
+        if (size < static_cast<int>(sizeof(SmartHeader))) return;
 
-            const InterestMessage * im =
-                reinterpret_cast<const InterestMessage *>(raw.data());
-            std::lock_guard<std::mutex> lock(_mtx);
-            if (im->disinterest) {
-                _interests.erase(h->unit);  // subscriber saiu: para de repetir
-            } else {
-                _interests[h->unit] = im->period_us;
-            }
+        const SmartHeader * h = reinterpret_cast<const SmartHeader *>(payload);
+        if (h->kind != SmartHeader::INTEREST) return;
+        if (size < static_cast<int>(sizeof(InterestMessage))) return;
+
+        const InterestMessage * im = reinterpret_cast<const InterestMessage *>(payload);
+        std::lock_guard<std::mutex> lock(_mtx);
+        if (im->disinterest) {
+            _interests.erase(h->unit);  // subscriber saiu: para de repetir
+        } else {
+            _interests[h->unit] = im->period_us;
         }
     }
 
 private:
-    // Reenvia todos os interesses rastreados (roda na Periodic_Thread).
     void repeat_all() {
         std::vector<std::pair<Unit, uint64_t>> snapshot;
         {
@@ -78,12 +75,10 @@ private:
             im.period_us = kv.second;
             im.disinterest = 0;
             TypedMessage<InterestMessage> msg(im);
-            _comm->send(&msg);
+            this->send(&msg);
         }
     }
 
-    Comm * _comm;
-    std::atomic<bool> _running;
     std::mutex _mtx;
     std::map<Unit, uint64_t> _interests;
     std::unique_ptr<Periodic_Thread> _repeater;

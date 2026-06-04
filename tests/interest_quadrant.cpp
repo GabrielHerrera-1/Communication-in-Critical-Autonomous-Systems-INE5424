@@ -1,22 +1,13 @@
-// Etapa 5 -- Interesse x quadrante (integra com a sincronizacao espacial da
-// etapa 4). Anotacao: "se alguem vai ficar reenviando interesse, para de enviar
-// na troca de quadrante".
-//
-// Cenario (2 VMs, WITH_GPS=1):
-//   vm1: RSU (master) -- GPS congelado (estacao fixa).
-//   vm2: subscriber MOVEL -- seu GPS troca de quadrante a cada ~3s. O refresh
-//        do interesse e SUPRIMIDO a cada troca de quadrante; o teste verifica
-//        que essas supressoes acontecem.
-//
-// Demonstra que o sistema Interesse/Resposta convive com o quadrante: o
-// interessado deixa de reenviar durante a transicao (os bindings do quadrante
-// antigo expiram e o interesse e reemitido naturalmente no novo quadrante).
+// Etapa 5 -- Interesse x quadrante (integra com a etapa 4). Anotacao: "se
+// alguem vai ficar reenviando interesse, para de enviar na troca de quadrante".
+// vm1 RSU fixa; vm2 subscriber MOVEL (le o mesmo /dev/gps do gateway). O refresh
+// do interesse e SUPRIMIDO a cada troca de quadrante. WITH_GPS=1.
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
 #include "../src/communication/smart_data/smart_data.h"
-#include "../src/communication/smart_data/transducer.h"
+#include "../src/communication/smart_data/data_types.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -29,7 +20,7 @@ namespace {
 const int      VM_COUNT         = 2;
 const int      RSU_VM_ID        = 1;
 const uint64_t PERIOD_US        = 300'000;
-const uint64_t NEEDED_SUPP      = 2;   // trocas de quadrante observadas
+const uint64_t NEEDED_SUPP      = 2;
 const int      MAX_WAIT_S       = 60;
 const int      STARTUP_DELAY_S  = 5;
 
@@ -61,23 +52,23 @@ public:
     explicit Moving_Subscriber(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB; }
+    bool wants_raw_communicator() const override { return false; }
 
     void run() override {
         sleep(STARTUP_DELAY_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] subscriber movel: refresh suprime na troca de quadrante" << std::endl;
 
-        SmartData<Counter_Transducer> consumer(_communicator, PERIOD_US);
+        SmartData<Counter_Data> consumer(_channel, PERIOD_US, _port);
 
-        uint64_t last_reported = 0;
+        uint64_t last = 0;
         for (int i = 0; i < MAX_WAIT_S && consumer.quadrant_suppressions() < NEEDED_SUPP; ++i) {
             sleep(1);
             uint64_t s = consumer.quadrant_suppressions();
-            if (s != last_reported) {
-                last_reported = s;
+            if (s != last) {
+                last = s;
                 std::cout << "[" << LABEL << "][vm" << _vm_id
-                          << "] troca de quadrante -> interesse suprimido (total="
-                          << s << ")" << std::endl;
+                          << "] troca de quadrante -> interesse suprimido (total=" << s << ")" << std::endl;
             }
         }
 
@@ -87,8 +78,7 @@ public:
 
         if (supp < NEEDED_SUPP) {
             std::cerr << "[" << LABEL << "][vm" << _vm_id
-                      << "] FAIL supressoes=" << supp << " < " << NEEDED_SUPP
-                      << " (GPS carregado? VM movel?)" << std::endl;
+                      << "] FAIL supressoes=" << supp << " < " << NEEDED_SUPP << std::endl;
             std::exit(1);
         }
 
@@ -103,17 +93,11 @@ private:
 
 int main() {
     const int vm_id = detect_vm_id();
-
     if (vm_id == RSU_VM_ID) {
-        RSU rsu;
-        rsu.initialize();
-        rsu.run();
-        return 0;
+        RSU rsu; rsu.initialize(); rsu.run(); return 0;
     }
-
     Vehicle vehicle(false);
-    vehicle.add_component(new Moving_Subscriber(vm_id),
-                          Component_Ports::TEST_INTEREST_SUB);
+    vehicle.add_component(new Moving_Subscriber(vm_id), Component_Ports::TEST_INTEREST_SUB);
     vehicle.initialize();
     vehicle.run();
     return 0;

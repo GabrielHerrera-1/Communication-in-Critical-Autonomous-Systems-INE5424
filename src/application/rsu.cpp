@@ -65,12 +65,10 @@ int RSU::run_gateway_process() {
     if (repeat_us > 0 && _gateway.protocol()) {
         std::cout << "[RSU] rastreamento passivo de interesses ativo (repeat_us="
                   << repeat_us << ")" << std::endl;
-        Communicator<Vehicle_Protocol> comm(
-            _gateway.protocol(),
-            _gateway.protocol()->create_address(Component_Ports::GATEWAY),
-            true);
-        Interest_Tracker tracker(&comm, repeat_us);
-        tracker.serve(); // bloqueia: substitui o pause() abaixo
+        // O tracker e um Communicator: seu update() (push) registra os
+        // interesses que passam; o repeater interno os reenvia. So mantemos vivo.
+        Interest_Tracker tracker(_gateway.protocol(), Component_Ports::GATEWAY, repeat_us);
+        while (true) { pause(); }
     }
 
     // Mantem o processo vivo para que as threads de fundo do Protocol

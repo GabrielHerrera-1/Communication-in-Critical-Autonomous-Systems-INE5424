@@ -1,20 +1,15 @@
 // Etapa 5 -- Rastreamento passivo na RSU: a RSU repete os interesses ouvidos.
-//
-// Cenario (3 VMs):
-//   vm1: RSU com rastreamento passivo (SO2_RSU_REPEAT_US setado).
-//   vm2: subscriber SEM auto-refresh -- manda o interesse algumas vezes no
-//        inicio (t~5s) e depois fica SILENCIOSO, apenas escutando respostas.
-//   vm3: publisher que entra TARDE (t~25s), quando o subscriber ja se calou.
-//
-// Como o subscriber nao reenvia o interesse, a unica forma do publisher tardio
-// aprender o interesse e atraves da REPETICAO da RSU. Se o subscriber receber
-// respostas, prova que a RSU fez a ponte (cobre late joiner / perda).
+// vm1 RSU-tracker; vm2 subscriber SEM auto-refresh (manda e se cala); vm3
+// publisher TARDIO. So a repeticao da RSU mantem o interesse vivo para o
+// publisher tardio. Recepcao push.
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
+#include "../src/communication/iproducer.h"
 #include "../src/communication/smart_data/smart_data.h"
-#include "../src/communication/smart_data/transducer.h"
+#include "../src/communication/smart_data/data_types.h"
+#include "../src/core/clock.h"
 
 #include <atomic>
 #include <cstdio>
@@ -28,12 +23,12 @@ namespace {
 const int      VM_COUNT         = 3;
 const int      RSU_VM_ID        = 1;
 const int      SUBSCRIBER_VM_ID = 2;
-const int      PUBLISHER_VM_ID  = 3;
 const uint64_t PERIOD_US        = 300'000;
 const uint64_t MIN_RESPONSES    = 3;
 const uint64_t PUB_ANNOUNCE_AFTER = 1;
 const int      STARTUP_SUB_S    = 5;
 const int      STARTUP_PUB_S    = 25;  // entra DEPOIS do subscriber se calar
+const int64_t  DEADLINE_NS      = 90LL * 1000000000LL;
 
 const char LABEL[] = "interest-rsu-repeat";
 
@@ -58,18 +53,19 @@ int detect_vm_id() {
     std::cerr << "[" << LABEL << "] so2.vm_id ausente" << std::endl; std::exit(1);
 }
 
-class Late_Publisher : public Component {
+class Late_Publisher : public Component, public IProducer<Counter_Data::Value> {
 public:
     explicit Late_Publisher(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_PUB; }
+    bool wants_raw_communicator() const override { return false; }
+    Counter_Data::Value produce() override { return Counter_Data::Value{ ++_seq }; }
 
     void run() override {
-        sleep(STARTUP_PUB_S); // entra tarde, quando o subscriber ja se calou
+        sleep(STARTUP_PUB_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] publisher TARDIO entrou (t~" << STARTUP_PUB_S << "s)" << std::endl;
-
-        SmartData<Counter_Transducer> producer(Counter_Transducer{}, _communicator);
+        SmartData<Counter_Data> producer(_channel, this, _port);
         static std::atomic<bool> announced{false};
         const int vm_id = _vm_id;
         producer.on_response_sent([vm_id](uint64_t n) {
@@ -79,11 +75,12 @@ public:
                 std::cout << "[" << LABEL << "][vm" << vm_id << "] cenario validado." << std::endl;
             }
         });
-        producer.serve();
+        while (true) pause();
     }
 
 private:
     int _vm_id;
+    uint64_t _seq = 0;
 };
 
 class Silent_Subscriber : public Component {
@@ -91,18 +88,19 @@ public:
     explicit Silent_Subscriber(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB; }
+    bool wants_raw_communicator() const override { return false; }
 
     void run() override {
         sleep(STARTUP_SUB_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] subscriber SEM auto-refresh: manda interesse e se cala" << std::endl;
 
-        // auto_refresh=false: manda o interesse poucas vezes e para. Depois
-        // disso, so a RSU mantem o interesse vivo (repetindo).
-        SmartData<Counter_Transducer> consumer(_communicator, PERIOD_US, /*auto_refresh=*/false);
+        // auto_refresh=false: manda o interesse poucas vezes e para.
+        SmartData<Counter_Data> consumer(_channel, PERIOD_US, _port, /*auto_refresh=*/false);
 
-        while (consumer.response_count() < MIN_RESPONSES) {
-            if (!consumer.update_once()) break;
+        const int64_t deadline = Clock::now_ns() + DEADLINE_NS;
+        while (consumer.response_count() < MIN_RESPONSES && Clock::now_ns() < deadline) {
+            consumer.wait_for_responses(MIN_RESPONSES, 3000);
         }
 
         const std::size_t producers = consumer.producer_count();
@@ -128,22 +126,14 @@ private:
 
 int main() {
     const int vm_id = detect_vm_id();
-
     if (vm_id == RSU_VM_ID) {
-        RSU rsu;
-        rsu.initialize();
-        rsu.run();
-        return 0;
+        RSU rsu; rsu.initialize(); rsu.run(); return 0;
     }
-
     Vehicle vehicle(false);
-    if (vm_id == SUBSCRIBER_VM_ID) {
-        vehicle.add_component(new Silent_Subscriber(vm_id),
-                              Component_Ports::TEST_INTEREST_SUB);
-    } else {
-        vehicle.add_component(new Late_Publisher(vm_id),
-                              Component_Ports::TEST_INTEREST_PUB);
-    }
+    if (vm_id == SUBSCRIBER_VM_ID)
+        vehicle.add_component(new Silent_Subscriber(vm_id), Component_Ports::TEST_INTEREST_SUB);
+    else
+        vehicle.add_component(new Late_Publisher(vm_id), Component_Ports::TEST_INTEREST_PUB);
     vehicle.initialize();
     vehicle.run();
     return 0;

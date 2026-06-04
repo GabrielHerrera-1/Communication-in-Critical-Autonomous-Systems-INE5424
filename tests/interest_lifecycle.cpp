@@ -1,21 +1,14 @@
 // Etapa 5 -- Ciclo de vida: interesse -> respostas -> DESINTERESSE -> parada.
-//
-// Cenario (3 VMs):
-//   vm1: RSU (master SPTP).
-//   vm2: subscriber -- assina Unit::TEST_COUNTER, coleta algumas respostas e
-//        depois cancela o interesse (bit de desinteresse) ao "sair".
-//   vm3: publisher -- responde ate receber o desinteresse; ao recebe-lo, para
-//        de responder e anuncia.
-//
-// Valida: o "bit de desinteresse" da spec, usado quando um veiculo sai da
-// simulacao. O publisher so valida APOS processar o desinteresse, provando que
-// a parada e dirigida pela mensagem (e nao apenas pelo expiry de soft-state).
+// vm1 RSU; vm2 subscriber coleta e cancela (sai); vm3 publisher para ao receber
+// o desinteresse (prova que a parada e dirigida pela mensagem). Recepcao push.
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
+#include "../src/communication/iproducer.h"
 #include "../src/communication/smart_data/smart_data.h"
-#include "../src/communication/smart_data/transducer.h"
+#include "../src/communication/smart_data/data_types.h"
+#include "../src/core/clock.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -28,10 +21,11 @@ namespace {
 const int      VM_COUNT          = 3;
 const int      RSU_VM_ID         = 1;
 const int      SUBSCRIBER_VM_ID  = 2;
-const uint64_t PERIOD_US         = 250'000; // 250ms
-const uint64_t COLLECT_BEFORE_UNSUB = 8;    // respostas antes de cancelar
+const uint64_t PERIOD_US         = 250'000;
+const uint64_t COLLECT_BEFORE_UNSUB = 8;
 const int      STARTUP_DELAY_S   = 5;
-const int      FORWARD_GRACE_S   = 3;       // mantem o gateway vivo p/ encaminhar o desinteresse
+const int      FORWARD_GRACE_S   = 3;
+const int64_t  DEADLINE_NS       = 90LL * 1000000000LL;
 
 const char LABEL[] = "interest-lifecycle";
 
@@ -56,20 +50,21 @@ int detect_vm_id() {
     std::cerr << "[" << LABEL << "] so2.vm_id ausente" << std::endl; std::exit(1);
 }
 
-class Publisher_Component : public Component {
+class Publisher_Component : public Component, public IProducer<Counter_Data::Value> {
 public:
     explicit Publisher_Component(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_PUB; }
+    bool wants_raw_communicator() const override { return false; }
+    Counter_Data::Value produce() override { return Counter_Data::Value{ ++_seq }; }
 
     void run() override {
         sleep(STARTUP_DELAY_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id << "] publisher pronto" << std::endl;
 
-        SmartData<Counter_Transducer> producer(Counter_Transducer{}, _communicator);
-
+        SmartData<Counter_Data> producer(_channel, this, _port);
         const int vm_id = _vm_id;
-        SmartData<Counter_Transducer> * p = &producer;
+        SmartData<Counter_Data> * p = &producer;
         producer.on_disinterest_received([vm_id, p](Unit) {
             std::cout << "[" << LABEL << "][vm" << vm_id
                       << "] DESINTERESSE recebido apos respostas_enviadas="
@@ -77,11 +72,12 @@ public:
             std::cout << "[" << LABEL << "][vm" << vm_id << "] cenario validado." << std::endl;
         });
 
-        producer.serve();
+        while (true) pause();
     }
 
 private:
     int _vm_id;
+    uint64_t _seq = 0;
 };
 
 class Subscriber_Component : public Component {
@@ -89,15 +85,17 @@ public:
     explicit Subscriber_Component(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB; }
+    bool wants_raw_communicator() const override { return false; }
 
     void run() override {
         sleep(STARTUP_DELAY_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id << "] subscriber pronto" << std::endl;
 
-        SmartData<Counter_Transducer> consumer(_communicator, PERIOD_US);
+        SmartData<Counter_Data> consumer(_channel, PERIOD_US, _port);
 
-        while (consumer.response_count() < COLLECT_BEFORE_UNSUB) {
-            if (!consumer.update_once()) break;
+        const int64_t deadline = Clock::now_ns() + DEADLINE_NS;
+        while (consumer.response_count() < COLLECT_BEFORE_UNSUB && Clock::now_ns() < deadline) {
+            consumer.wait_for_responses(COLLECT_BEFORE_UNSUB, 2000);
         }
 
         std::cout << "[" << LABEL << "][vm" << _vm_id
@@ -105,8 +103,7 @@ public:
                   << " -- enviando DESINTERESSE (saindo)" << std::endl;
         consumer.unsubscribe();
 
-        // mantem o processo (e seu gateway) vivo para encaminhar o desinteresse
-        sleep(FORWARD_GRACE_S);
+        sleep(FORWARD_GRACE_S); // mantem o gateway vivo para encaminhar o desinteresse
 
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] RESUMO respostas=" << consumer.response_count()
@@ -122,22 +119,14 @@ private:
 
 int main() {
     const int vm_id = detect_vm_id();
-
     if (vm_id == RSU_VM_ID) {
-        RSU rsu;
-        rsu.initialize();
-        rsu.run();
-        return 0;
+        RSU rsu; rsu.initialize(); rsu.run(); return 0;
     }
-
     Vehicle vehicle(false);
-    if (vm_id == SUBSCRIBER_VM_ID) {
-        vehicle.add_component(new Subscriber_Component(vm_id),
-                              Component_Ports::TEST_INTEREST_SUB);
-    } else {
-        vehicle.add_component(new Publisher_Component(vm_id),
-                              Component_Ports::TEST_INTEREST_PUB);
-    }
+    if (vm_id == SUBSCRIBER_VM_ID)
+        vehicle.add_component(new Subscriber_Component(vm_id), Component_Ports::TEST_INTEREST_SUB);
+    else
+        vehicle.add_component(new Publisher_Component(vm_id), Component_Ports::TEST_INTEREST_PUB);
     vehicle.initialize();
     vehicle.run();
     return 0;

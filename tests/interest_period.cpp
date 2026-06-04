@@ -1,27 +1,22 @@
 // Etapa 5 -- Aderencia ao periodo pedido no Interesse.
-//
-// Cenario (3 VMs):
-//   vm1: RSU (master SPTP).
-//   vm2: subscriber -- assina Unit::TEST_COUNTER com period=PERIOD_US e mede o
-//        intervalo entre respostas consecutivas.
-//   vm3: publisher -- responde no periodo pedido.
-//
-// Valida: "cada mensagem de Interesse especifica o periodo no qual os agentes
-// devem enviar respostas e cada agente gerencia o intervalo". A tolerancia e
-// folgada de proposito (a spec diz que o periodo nao precisa ser perfeito).
+// vm1 RSU; vm2 subscriber mede o intervalo entre Respostas; vm3 publisher.
+// Recepcao push: cada Resposta dispara on_response_received (registra a chegada).
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
 #include "../src/application/components/component.h"
+#include "../src/communication/iproducer.h"
 #include "../src/communication/smart_data/smart_data.h"
-#include "../src/communication/smart_data/transducer.h"
+#include "../src/communication/smart_data/data_types.h"
 #include "../src/core/clock.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <vector>
 #include <unistd.h>
 
@@ -30,13 +25,12 @@ namespace {
 const int      VM_COUNT         = 3;
 const int      RSU_VM_ID        = 1;
 const int      SUBSCRIBER_VM_ID = 2;
-const uint64_t PERIOD_US        = 250'000; // 250ms pedido
-const int      SAMPLES          = 25;      // respostas medidas
-const int      WARMUP           = 5;       // descarta as primeiras deltas
-const uint64_t PUB_ANNOUNCE_AFTER = 3;
+const uint64_t PERIOD_US        = 250'000;
+const int      SAMPLES          = 25;
+const int      WARMUP           = 5;
+const uint64_t PUB_ANNOUNCE_AFTER = 1;
 const int      STARTUP_DELAY_S  = 5;
-
-// tolerancia folgada: media do intervalo deve cair em [0.5*P, 1.8*P]
+const int64_t  DEADLINE_NS      = 90LL * 1000000000LL;
 const double   LOW_FACTOR  = 0.5;
 const double   HIGH_FACTOR = 1.8;
 
@@ -63,29 +57,30 @@ int detect_vm_id() {
     std::cerr << "[" << LABEL << "] so2.vm_id ausente" << std::endl; std::exit(1);
 }
 
-class Publisher_Component : public Component {
+class Publisher_Component : public Component, public IProducer<Counter_Data::Value> {
 public:
     explicit Publisher_Component(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_PUB; }
+    bool wants_raw_communicator() const override { return false; }
+    Counter_Data::Value produce() override { return Counter_Data::Value{ ++_seq }; }
 
     void run() override {
         sleep(STARTUP_DELAY_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id << "] publisher pronto" << std::endl;
-        SmartData<Counter_Transducer> producer(Counter_Transducer{}, _communicator);
-        static bool announced = false;
+        SmartData<Counter_Data> producer(_channel, this, _port);
+        static std::atomic<bool> announced{false};
         const int vm_id = _vm_id;
         producer.on_response_sent([vm_id](uint64_t n) {
-            if (n >= PUB_ANNOUNCE_AFTER && !announced) {
-                announced = true;
+            if (n >= PUB_ANNOUNCE_AFTER && !announced.exchange(true))
                 std::cout << "[" << LABEL << "][vm" << vm_id << "] cenario validado." << std::endl;
-            }
         });
-        producer.serve();
+        while (true) pause();
     }
 
 private:
     int _vm_id;
+    uint64_t _seq = 0;
 };
 
 class Subscriber_Component : public Component {
@@ -93,32 +88,38 @@ public:
     explicit Subscriber_Component(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB; }
+    bool wants_raw_communicator() const override { return false; }
 
     void run() override {
         sleep(STARTUP_DELAY_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id
                   << "] subscriber period_us=" << PERIOD_US << std::endl;
 
-        SmartData<Counter_Transducer> consumer(_communicator, PERIOD_US);
-
+        std::mutex mtx;
         std::vector<int64_t> arrivals;
-        arrivals.reserve(SAMPLES);
-        while (static_cast<int>(arrivals.size()) < SAMPLES) {
-            if (!consumer.update_once()) break;
-            arrivals.push_back(Clock::now_ns());
+        SmartData<Counter_Data> consumer(_channel, PERIOD_US, _port);
+        consumer.on_response_received([&](const Counter_Data::Value &, int64_t recv_ns) {
+            std::lock_guard<std::mutex> l(mtx);
+            arrivals.push_back(recv_ns);
+        });
+
+        const int64_t deadline = Clock::now_ns() + DEADLINE_NS;
+        for (;;) {
+            { std::lock_guard<std::mutex> l(mtx); if (static_cast<int>(arrivals.size()) >= SAMPLES) break; }
+            if (Clock::now_ns() >= deadline) break;
+            consumer.wait_for_responses(consumer.response_count() + 1, 2000);
         }
 
-        if (static_cast<int>(arrivals.size()) < SAMPLES) {
+        std::vector<int64_t> a;
+        { std::lock_guard<std::mutex> l(mtx); a = arrivals; }
+        if (static_cast<int>(a.size()) < SAMPLES) {
             std::cerr << "[" << LABEL << "][vm" << _vm_id
-                      << "] FAIL amostras insuficientes=" << arrivals.size() << std::endl;
+                      << "] FAIL amostras=" << a.size() << std::endl;
             std::exit(1);
         }
 
-        // deltas em us, descartando o warmup inicial
         std::vector<int64_t> deltas;
-        for (std::size_t i = 1; i < arrivals.size(); ++i) {
-            deltas.push_back((arrivals[i] - arrivals[i - 1]) / 1000);
-        }
+        for (std::size_t i = 1; i < a.size(); ++i) deltas.push_back((a[i] - a[i - 1]) / 1000);
         std::vector<int64_t> stable(deltas.begin() + std::min<std::size_t>(WARMUP, deltas.size()),
                                     deltas.end());
         int64_t sum = 0;
@@ -136,8 +137,7 @@ public:
         const int64_t high = static_cast<int64_t>(HIGH_FACTOR * PERIOD_US);
         if (avg < low || avg > high) {
             std::cerr << "[" << LABEL << "][vm" << _vm_id
-                      << "] FAIL avg_us=" << avg << " fora de [" << low << "," << high << "]"
-                      << std::endl;
+                      << "] FAIL avg_us=" << avg << " fora de [" << low << "," << high << "]" << std::endl;
             std::exit(1);
         }
 
@@ -152,22 +152,14 @@ private:
 
 int main() {
     const int vm_id = detect_vm_id();
-
     if (vm_id == RSU_VM_ID) {
-        RSU rsu;
-        rsu.initialize();
-        rsu.run();
-        return 0;
+        RSU rsu; rsu.initialize(); rsu.run(); return 0;
     }
-
     Vehicle vehicle(false);
-    if (vm_id == SUBSCRIBER_VM_ID) {
-        vehicle.add_component(new Subscriber_Component(vm_id),
-                              Component_Ports::TEST_INTEREST_SUB);
-    } else {
-        vehicle.add_component(new Publisher_Component(vm_id),
-                              Component_Ports::TEST_INTEREST_PUB);
-    }
+    if (vm_id == SUBSCRIBER_VM_ID)
+        vehicle.add_component(new Subscriber_Component(vm_id), Component_Ports::TEST_INTEREST_SUB);
+    else
+        vehicle.add_component(new Publisher_Component(vm_id), Component_Ports::TEST_INTEREST_PUB);
     vehicle.initialize();
     vehicle.run();
     return 0;
