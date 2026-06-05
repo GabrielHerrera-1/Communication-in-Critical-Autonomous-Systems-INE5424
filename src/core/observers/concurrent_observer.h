@@ -24,19 +24,29 @@ public:
 
     Concurrent_Observer(): _semaphore(0) {}
 
-    ~Concurrent_Observer() {}
+    virtual ~Concurrent_Observer() {}
 
-    void update(C c, D * d) {
+    // virtual: subclasses (ex.: SmartData, como observer do Communicator)
+    // sobrescrevem update() para interpretar a mensagem na hora, em vez de so
+    // empilhar. O notify() do Concurrent_Observed chama via Concurrent_Observer*,
+    // entao precisa ser virtual para o override ser despachado.
+    virtual void update(C c, D * d) {
         // lock_guard em vez de lock/unlock manual: se funcao lançar exceção,
         // o destrutor do lock_guard garante que o mutex é destravado
         std::lock_guard<std::mutex> lock(_mtx);
         _data.push(d);
         _semaphore.v();
     }
-    D * updated() {
-        _semaphore.p();
-
+    // timeout_ms < 0 bloqueia indefinidamente; >= 0 espera ate o timeout e
+    // devolve nullptr se esgotar (usado pelo consumidor: receive_response).
+    D * updated(int timeout_ms = -1) {
+        if (timeout_ms < 0) {
+            _semaphore.p();
+        } else if (!_semaphore.p_for(timeout_ms)) {
+            return nullptr;
+        }
         std::lock_guard<std::mutex> lock(_mtx);
+        if (_data.empty()) return nullptr;
         D* r = _data.front();
         _data.pop();
         return r;
@@ -105,6 +115,17 @@ public:
             }
         }
         return notified;
+    }
+
+    // true se ha algum observer anexado para a condicao c. O Communicator usa
+    // isto para decidir entre "unmarshal + notify" (ha SmartData escutando) e
+    // "empilhar o buffer para receive()" (componente legado, sem observers).
+    bool has_observer(C c) {
+        std::lock_guard<std::mutex> lock(_mtx);
+        for (auto& e : _observers) {
+            if (e.condition == c) return true;
+        }
+        return false;
     }
 
 private:

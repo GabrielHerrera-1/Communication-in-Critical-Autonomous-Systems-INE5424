@@ -15,6 +15,8 @@
 #pragma once
 
 #include <semaphore.h>
+#include <ctime>
+#include <cerrno>
 
 class Semaphore {
     public:
@@ -26,6 +28,20 @@ class Semaphore {
         }
         void p() { // decrementa o contador
             sem_wait(&_sem);
+        }
+        // p() com timeout em ms: true se decrementou, false se esgotou o tempo.
+        // usado por updated(timeout) para drenar a fila sem bloquear pra sempre.
+        bool p_for(int timeout_ms) {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec  += timeout_ms / 1000;
+            ts.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+            if (ts.tv_nsec >= 1000000000L) { ts.tv_sec += 1; ts.tv_nsec -= 1000000000L; }
+            while (sem_timedwait(&_sem, &ts) != 0) {
+                if (errno == EINTR) continue; // reinicia se interrompido por sinal
+                return false;                 // ETIMEDOUT ou erro
+            }
+            return true;
         }
         void v() { // incrementa o contador
             sem_post(&_sem);
