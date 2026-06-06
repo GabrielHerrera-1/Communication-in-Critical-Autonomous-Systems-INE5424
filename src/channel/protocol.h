@@ -139,6 +139,9 @@ public:
                 _socket_nic->attach(this, PROTO);
                 _socket_nic->setup_read_quadrant(&read_quadrant);
                 _socket_nic->setup_write_quadrant(&write_quadrant);
+                // ao detectar troca de quadrante no send, a NIC pede
+                // resync ao sptp
+                _socket_nic->setup_quadrant_change_handler(&on_quadrant_change);
             }
         }
 
@@ -371,6 +374,13 @@ private:
     static void write_quadrant(void* Protocol_payload, uint8_t q){
         Header* h = reinterpret_cast<Header*>(Protocol_payload);
         h->quadrant(q);
+    }
+
+    // a nic chama isso (event-driven, no caminho de send) quando
+    // detecta que o quadrante mudou. pedimos resync ao SPTP imediatamente
+    static void on_quadrant_change(){
+        if (_instance && _instance->_sptp)
+            _instance->_sptp->request_resync();
     }
 
 

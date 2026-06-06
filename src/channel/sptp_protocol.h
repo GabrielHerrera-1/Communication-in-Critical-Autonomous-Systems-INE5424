@@ -96,6 +96,17 @@ public:
         }
     }
 
+    // resync pra quando troca de quadrante, sem esperar o tempo
+    void request_resync() {
+        if (_is_master) return;
+        if (!_running.load(std::memory_order_acquire)) return;
+        int n = _resync_requests.fetch_add(1, std::memory_order_relaxed) + 1;
+        send_sync_request();
+    }
+
+    // usado nos testes/observabilidade: quantos resyncs por troca de quadrante
+    int resync_requests() const { return _resync_requests.load(std::memory_order_relaxed); }
+
     // chamado pelo Protocol quando chega um pacote sptp
     // header_ts = packet->timestamp() (t2 quando REQUEST_SYNC, t1 quando SYNC). TODO: ver se isso é ok
     // payload = conteudo apos o Header do Protocol (ptp_frame):
@@ -268,6 +279,7 @@ private:
     std::atomic<bool> _running{false};
     std::thread       _silence_worker;
     std::atomic<int>  _sync_count{0};
+    std::atomic<int>  _resync_requests{0};  // resyncs disparados por troca de quadrante
     // sinaliza para o watchdog que ja houve pelo menos uma medicao nao-outlier
     std::atomic<bool> _first_sync_done{false};
 };

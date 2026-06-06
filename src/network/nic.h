@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdio>
 #include <stack>
+#include <atomic>
 
 // Network
 template <typename Engine>
@@ -27,6 +28,7 @@ public:
     typedef Conditionally_Data_Observed<Buffer<Ethernet::Frame>, Ethernet::Protocol> Observed;
     typedef uint8_t (*read_quadrant)(const void* Protocol_payload);
     typedef void (*write_quadrant)(void* Protocol_payload, uint8_t q);
+    typedef void (*quadrant_change_handler)();
 
     void setup_read_quadrant(read_quadrant rq){
         _read_quadrant = rq;
@@ -34,6 +36,10 @@ public:
 
     void setup_write_quadrant(write_quadrant wq){
         _write_quadrant = wq;
+    }
+
+    void setup_quadrant_change_handler(quadrant_change_handler h){
+        _on_quadrant_change = h;
     }
 
     static bool is_gateway_process() {
@@ -93,6 +99,7 @@ public:
 
         _read_quadrant = [](const void* payload) -> uint8_t {return 0xFF;};
         _write_quadrant = [](void* payload, uint8_t q) -> void {return;};
+        _on_quadrant_change = []() -> void {return;};
     }
 
     ~NIC() {
@@ -129,7 +136,9 @@ public:
     int send(Buffer<Ethernet::Frame> *buf) {
         // não tem risco de a shm nic escrever um vazio num quadrant válido pois ela nunca recebe
         // a função de como reeescreve o quadrant (_write_quadrant é o default pra shm)
-        _write_quadrant(buf->data()->payload(), Engine::engine_current_quadrant());
+        uint8_t q = Engine::engine_current_quadrant();
+        _write_quadrant(buf->data()->payload(), q);
+        detect_quadrant_change(q);
         int bytes = Engine::engine_send(buf->data(), Ethernet::HEADER_SIZE + buf->size());
         if (bytes > 0) {
             _statistics.tx_packets++;
@@ -185,6 +194,13 @@ private:
         return &_buffer[idx];
     }
 
+    void detect_quadrant_change(uint8_t q) {
+        if (q == GPS::QUADRANT_NONE) return;
+        uint8_t prev = _last_quadrant.exchange(q, std::memory_order_relaxed);
+        if (prev != GPS::QUADRANT_NONE && prev != q)
+            _on_quadrant_change();
+    }
+
     Address _address;
     std::once_flag _receive_started;
     std::mutex _buf_mtx;
@@ -193,6 +209,8 @@ private:
     std::stack<unsigned int> _free_list;
     read_quadrant _read_quadrant;
     write_quadrant _write_quadrant;
+    quadrant_change_handler _on_quadrant_change;
+    std::atomic<uint8_t> _last_quadrant{GPS::QUADRANT_NONE};
 };
 
 #endif
