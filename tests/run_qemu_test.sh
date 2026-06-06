@@ -19,6 +19,8 @@ TIMEOUT_SEC=${TIMEOUT_SEC:-180}
 QEMU_CPU=${QEMU_CPU:-default}
 QEMU_MEM=${QEMU_MEM:-512}
 APPEND_CMDLINE=${APPEND_CMDLINE:-}
+SUCCESS_COUNT=${SUCCESS_COUNT:-1}
+SUCCESS_COUNT_VM1=${SUCCESS_COUNT_VM1:-}
 QEMU_BIN=${QEMU_BIN:-qemu-system-x86_64}
 QEMU_MACHINE=${QEMU_MACHINE:-}
 QEMU_NET_DEV=${QEMU_NET_DEV:-}
@@ -110,12 +112,19 @@ trap cleanup EXIT INT TERM
 
 log_matches_expectations() {
     logfile=$1
+    log_vm_index=${2:-0}
 
     if [ ! -f "$logfile" ]; then
         return 1
     fi
 
-    if ! grep -aFq "$SUCCESS_PATTERN" "$logfile"; then
+    required_success_count=$SUCCESS_COUNT
+    if [ "$log_vm_index" = "1" ] && [ -n "$SUCCESS_COUNT_VM1" ]; then
+        required_success_count=$SUCCESS_COUNT_VM1
+    fi
+
+    actual_success_count=$(grep -aF "$SUCCESS_PATTERN" "$logfile" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$actual_success_count" -lt "$required_success_count" ]; then
         return 1
     fi
 
@@ -330,7 +339,7 @@ while :; do
     vm_index=1
     while [ "$vm_index" -le "$VM_COUNT" ]; do
         logfile="$LOG_DIR/vm${vm_index}.log"
-        if log_matches_expectations "$logfile"; then
+        if log_matches_expectations "$logfile" "$vm_index"; then
             success_count=$(expr "$success_count" + 1)
         fi
         vm_index=$(expr "$vm_index" + 1)
@@ -385,7 +394,7 @@ done
 vm_index=1
 while [ "$vm_index" -le "$VM_COUNT" ]; do
     logfile="$LOG_DIR/vm${vm_index}.log"
-    if ! log_matches_expectations "$logfile"; then
+    if ! log_matches_expectations "$logfile" "$vm_index"; then
         error "[test:$SCENARIO_NAME] padrao de sucesso ausente em $logfile"
         tail -n 40 "$logfile" >&2 || true
         exit 1

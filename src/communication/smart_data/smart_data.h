@@ -69,12 +69,14 @@ public:
             Smart_Config::BINDING_LIFETIME_MIN_US,
             Smart_Config::BINDING_LIFETIME_FACTOR,
             Smart_Config::REAPER_PERIOD_US);
+        _comm->ensure_broadcast_subscription();
         _comm->attach(this, _comm->broadcast_condition()); // observa o Communicator
     }
 
     // CONSUMIDOR
     SmartData(Comm * comm, uint64_t period_us, bool auto_refresh = true)
         : _comm(comm), _role(CONSUMER), _period_us(period_us ? period_us : 1) {
+        _comm->ensure_broadcast_subscription();
         _comm->attach(this, _comm->broadcast_condition());
         send_interest(false);
         if (auto_refresh) {
@@ -118,7 +120,7 @@ public:
         } else if (_role == CONSUMER && h->kind == SmartHeader::RESPONSE) {
             {
                 std::lock_guard<std::mutex> lock(_mtx);
-                _producers.insert(mac_key(m->address()));
+                _producers.insert(endpoint_key(m->address()));
                 ++_responses_received;
             }
             Base::update(c, m); // ENFILEIRA a Message inteira (app drena)
@@ -168,11 +170,11 @@ private:
         return reinterpret_cast<const SmartHeader *>(m->data());
     }
 
-    static uint64_t mac_key(const Address & a) {
+    static uint64_t endpoint_key(const Address & a) {
         const uint8_t * mac = a.paddr().raw();
         uint64_t k = 0;
         for (int i = 0; i < 6; ++i) k = (k << 8) | mac[i];
-        return k;
+        return (k << 16) | a.port();
     }
 
     void respond(Unit /*UNIT*/) {

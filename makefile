@@ -65,13 +65,19 @@ INTEREST_LIFECYCLE_BIN := $(BIN_DIR)/interest_lifecycle
 INTEREST_SCALE_BIN := $(BIN_DIR)/interest_scale
 INTEREST_RSU_REPEAT_BIN := $(BIN_DIR)/interest_rsu_repeat
 INTEREST_QUADRANT_BIN := $(BIN_DIR)/interest_quadrant
+INTEREST_BASIC_5_BIN := $(BIN_DIR)/interest_basic_5
+INTEREST_PERIOD_SCALE_BIN := $(BIN_DIR)/interest_period_scale
+INTEREST_MIXED_TYPES_BIN := $(BIN_DIR)/interest_mixed_types
+INTEREST_DYNAMIC_BIN := $(BIN_DIR)/interest_dynamic
+INTEREST_FULL_BIN := $(BIN_DIR)/interest_full_integration
 INTEREST_SCALE_MEM ?= 128
+INTEREST_FULL_MEM ?= 192
 LIB_NAME := so2
 STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant test-interest test-interest-basic test-interest-period test-interest-lifecycle test-interest-rsu-repeat test-interest-quadrant test-interest-scale gps-module gps-rebuild measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant test-interest test-interest-basic test-interest-period test-interest-lifecycle test-interest-rsu-repeat test-interest-quadrant test-interest-scale test-interest-basic-5 test-interest-period-scale test-interest-mixed-types test-interest-dynamic test-interest-full test-interest-final gps-module gps-rebuild measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -236,6 +242,39 @@ test-interest-scale: select-qemu-cpu $(INTEREST_SCALE_BIN) $(RUN_QEMU_TEST)
 	@TIMEOUT_SEC=240 QEMU_MEM=$(INTEREST_SCALE_MEM) LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_SCALE_BIN)" 22 interest-scale "cenario validado."
 	@for f in $(LOG_DIR)/interest-scale/latest/logs/vm2.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-scale aprovado."
+
+test-interest-basic-5: select-qemu-cpu $(INTEREST_BASIC_5_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] interest-basic-5: 7 VMs (RSU + 1 consumidor + 5 produtores)..."
+	@TIMEOUT_SEC=120 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_BASIC_5_BIN)" 7 interest-basic-5 "cenario validado."
+	@for f in $(LOG_DIR)/interest-basic-5/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
+	@echo "[test] interest-basic-5 aprovado."
+
+test-interest-period-scale: select-qemu-cpu $(INTEREST_PERIOD_SCALE_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] interest-period-scale: 22 VMs, periodo medido por produtor..."
+	@TIMEOUT_SEC=240 QEMU_MEM=$(INTEREST_SCALE_MEM) LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_PERIOD_SCALE_BIN)" 22 interest-period-scale "cenario validado."
+	@for f in $(LOG_DIR)/interest-period-scale/latest/logs/vm2.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
+	@echo "[test] interest-period-scale aprovado."
+
+test-interest-mixed-types: select-qemu-cpu $(INTEREST_MIXED_TYPES_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] interest-mixed-types: 12 VMs, SPEED/LIDAR/RADAR/COUNTER simultaneos..."
+	@TIMEOUT_SEC=180 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_MIXED_TYPES_BIN)" 12 interest-mixed-types "cenario validado."
+	@for f in $(LOG_DIR)/interest-mixed-types/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
+	@echo "[test] interest-mixed-types aprovado."
+
+test-interest-dynamic: select-qemu-cpu $(INTEREST_DYNAMIC_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] interest-dynamic: consumidores/produtores entrando e saindo com RSU tracker..."
+	@TIMEOUT_SEC=150 APPEND_CMDLINE="so2.rsu_repeat_us=1000000" LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_DYNAMIC_BIN)" 7 interest-dynamic "cenario validado."
+	@for f in $(LOG_DIR)/interest-dynamic/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
+	@echo "[test] interest-dynamic aprovado."
+
+test-interest-full: select-qemu-cpu $(INTEREST_FULL_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] interest-full: 22 VMs, 21 veiculos com 5 componentes cada..."
+	@TIMEOUT_SEC=180 QEMU_MEM=$(INTEREST_FULL_MEM) SUCCESS_COUNT_VM1=1 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_FULL_BIN)" 22 interest-full "cenario validado."
+	@for f in $(LOG_DIR)/interest-full/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
+	@echo "[test] interest-full aprovado."
+
+test-interest-final: test-interest-basic-5 test-interest-period-scale test-interest-mixed-types test-interest-dynamic test-interest-full
+	@echo "[test] suite final de interesse aprovada."
 
 # suite leve (sem escala/quadrante)
 test-interest: test-interest-basic test-interest-period test-interest-lifecycle test-interest-rsu-repeat

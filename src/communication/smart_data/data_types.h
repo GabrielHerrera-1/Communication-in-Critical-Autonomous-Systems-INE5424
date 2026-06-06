@@ -18,6 +18,11 @@ struct Lidar_Data {
     struct Value { double meters; };
 };
 
+struct Radar_Data {
+    static constexpr Unit UNIT = Unit::RADAR_DISTANCE;
+    struct Value { double meters; };
+};
+
 // tipo deterministico, conveniente para asserts de teste
 struct Counter_Data {
     static constexpr Unit UNIT = Unit::TEST_COUNTER;

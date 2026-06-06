@@ -53,6 +53,15 @@ public:
     // O SmartData se anexa a esta condicao para receber Interesse/Resposta.
     Condition broadcast_condition() const { return _broadcast_address.port(); }
 
+    // Permite componentes que entram tardiamente nascerem sem escutar broadcast
+    // e assinarem o grupo apenas quando o SmartData existir. Assim o caminho
+    // legado de receive() nao acumula buffers que ninguem vai drenar.
+    void ensure_broadcast_subscription() {
+        if (_subscribed_to_broadcast) return;
+        _channel->attach(this, _broadcast_address);
+        _subscribed_to_broadcast = true;
+    }
+
     template <typename Payload>
     bool send(TypedMessage<Payload> * message) {
         message->timestamp(Clock::monotonic_stamp());
