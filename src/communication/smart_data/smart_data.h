@@ -108,10 +108,10 @@ public:
             if (m->size() >= sizeof(InterestMessage)) {
                 const InterestMessage * im = reinterpret_cast<const InterestMessage *>(m->data());
                 if (im->disinterest) {
-                    _cache->on_disinterest(UNIT);
+                    _cache->on_disinterest(UNIT, m->address());
                     if (_on_disinterest) _on_disinterest(UNIT);
                 } else {
-                    _cache->on_interest(UNIT, im->period_us);
+                    _cache->on_interest(UNIT, m->address(), im->period_us);
                 }
             }
             delete m; // tratado na hora
