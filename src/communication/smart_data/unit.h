@@ -4,13 +4,7 @@
 #include <cstdint>
 
 // Unit: o "type" das mensagens de Interesse e Resposta (spec da etapa 5).
-// Identifica inequivocamente o tipo do dado, no espirito dos codigos TEDS
-// (Transducer Electronic Data Sheet, IEEE 1451). Cada SmartData<Tipo> fica
-// amarrado a uma Unit via Tipo::UNIT; Interesse/Resposta carregam a Unit no
-// cabecalho para que so os agentes daquele tipo reajam a mensagem.
-//
-// Os valores sao arbitrarios mas estaveis (fazem parte do "contrato de fio"):
-// dois agentes em VMs diferentes precisam concordar no codigo de cada tipo.
+// Identifica inequivocamente o tipo do dado
 enum class Unit : uint32_t {
     NONE            = 0x00000000,
 

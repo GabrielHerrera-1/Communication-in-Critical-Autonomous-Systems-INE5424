@@ -25,34 +25,14 @@
 #include "smart_helpers.h"
 
 struct Smart_Config {
-    // Refresh REATIVO: tambem e o limiar de silencio. Reenvia o interesse so se
-    // passou este tempo sem receber Resposta (e o periodo com que o checa).
-    static constexpr uint64_t INTEREST_REFRESH_US     = 1'000'000; // 1s de silencio -> reenvia
+    static constexpr uint64_t INTEREST_REFRESH_US     = 1'000'000; // Refresh REATIVO 1s de silencio -> reenvia
     static constexpr uint64_t BINDING_LIFETIME_MIN_US = 3'500'000; // binding expira apos 3.5s sem refresh
     static constexpr unsigned BINDING_LIFETIME_FACTOR = 4;
     static constexpr uint64_t REAPER_PERIOD_US        = 1'000'000;
-    // modo-valor: o ultimo valor e considerado fresco por ate N periodos sem
-    // atualizacao; depois disso, expired() (sem EWMA -- validade pelo periodo pedido)
-    static constexpr unsigned VALUE_TTL_FACTOR        = 3;
+    static constexpr unsigned VALUE_TTL_FACTOR        = 3;         // modo-valor: o ultimo valor e considerado fresco por ate N periodos sem atualizacao
 };
 
-// SmartData<Tipo>: abstracao Interesse/Resposta (etapa 5). E um
-// Concurrent_Observer<Message> que OBSERVA o Communicator: quando uma mensagem
-// chega, o Communicator faz unmarshal e chama o update() abaixo com a Message
-// inteira. Dois papeis pelo construtor:
-//
-//   PRODUTOR: recebe um IProducer<Value> (o componente produz o dado). Ao
-//     receber um Interesse da sua Unit, registra o binding e dispara uma thread
-//     periodica que responde. Trata o interesse no proprio update().
-//   CONSUMIDOR: emite o Interesse (periodo) e ENFILEIRA as Respostas (a Message
-//     inteira) na fila do Concurrent_Observer; a aplicacao drena via
-//     receive_response() -- ou le o ultimo valor por value() no modo-valor.
-//
-// Tipo e um descritor {static Unit UNIT; struct Value;} -- so o tipo.
-//
-// Restricao: UM SmartData por Communicator (o Communicator entrega a mesma
-// Message a todos os observers da condicao; um componente e produtor OU
-// consumidor, com seu proprio Communicator).
+// SmartData<Tipo>: abstracao Interesse/Resposta (etapa 5), observer do communicator
 template <typename Type>
 class SmartData : public Concurrent_Observer<Message, Vehicle_Protocol::Port> {
 public:
@@ -76,9 +56,7 @@ public:
         _comm->attach(this, _comm->broadcast_condition()); // observa o Communicator
     }
 
-    // CONSUMIDOR. value_mode=false (padrao): enfileira as Respostas (fluxo,
-    // drenado por receive_response). value_mode=true: NAO enfileira; guarda so o
-    // ULTIMO valor, lido como variavel por value()/operator Value().
+    // CONSUMIDOR
     SmartData(Comm * comm, uint64_t period_us, bool auto_refresh = true, bool value_mode = false)
         : _comm(comm), _role(CONSUMER), _period_us(period_us ? period_us : 1),
           _value_mode(value_mode) {
@@ -86,10 +64,7 @@ public:
         _last_response_ns.store(Clock::now_ns(), std::memory_order_relaxed);
         send_interest(false);
         if (auto_refresh) {
-            // Refresh REATIVO: so reenvia o interesse apos um silencio de dados.
-            // Em fluxo estavel fica quieto; ao trocar de quadrante o filtro
-            // espacial corta os dados antigos -> silencio -> reenvio re-carimbado
-            // com o quadrante novo pela NIC (mobilidade implicita, sem GPS).
+            // Refresh REATIVO
             _refresh = std::make_unique<Periodic_Thread>(
                 Smart_Config::INTEREST_REFRESH_US, [this] { reactive_tick(); });
         } else {
@@ -111,7 +86,6 @@ public:
         drain_and_free(*this); // libera mensagens que ficaram na fila
     }
 
-    // ===================== PUSH: o Communicator notifica =====================
     void update(Port c, Message * m) override {
         const SmartHeader * h = header_of(m);
         if (!h || h->unit != UNIT) { delete m; return; }
@@ -153,16 +127,15 @@ public:
         }
     }
 
-    // ===================== CONSUMIDOR (aplicacao) =====================
-    // dequeue da proxima Resposta como Message inteira; nullptr no timeout.
-    // O chamador assume a posse e deve dar delete.
+    // ===================== consumidor =====================
     Message * receive_response(int timeout_ms = -1) { return Base::updated(timeout_ms); }
 
-    // ---- modo-valor: o dado lido como uma variavel viva (estilo EPOS) ----
-    // ultimo valor recebido (Value{} se nunca recebeu -- cheque expired()/fresh())
+    // modo-valor: o dado lido como uma variavel viva
     Value value() const { std::lock_guard<std::mutex> l(_mtx); return _last_value; }
-    // operator Value(): trata o SmartData como o proprio dado (v = consumer)
+
+    // operator Value(): trata o SmartData como o proprio dado
     operator Value() const { return value(); }
+
     // true se nunca recebeu OU se ja passou VALUE_TTL_FACTOR periodos sem atualizar
     bool expired() const {
         std::lock_guard<std::mutex> l(_mtx);
@@ -175,7 +148,8 @@ public:
 
     std::size_t producer_count() const { std::lock_guard<std::mutex> l(_mtx); return _producers.size(); }
     uint64_t    response_count() const { std::lock_guard<std::mutex> l(_mtx); return _responses_received; }
-    // nº de reenvios reativos do interesse (1s seco) -- observabilidade do keep-alive
+
+    // n de reenvios reativos do interesse
     uint64_t    reissues() const { return _reissues.load(std::memory_order_relaxed); }
 
     void unsubscribe() {
@@ -188,17 +162,14 @@ public:
         }
     }
 
-    // saida ABRUPTA: para de reanunciar e NAO envia desinteresse (simula um
-    // veiculo que some/cai). A RSU detecta a saida por presenca (lease PTP) e
-    // manda parar os produtores -- e o caminho que o desinteresse explicito nao
-    // cobre.
+    // saida ABRUPTA: para de reanunciar e NAO envia desinteresse (simula um veiculo que some/cai)
     void abandon() {
         if (_role != CONSUMER) return;
         if (_refresh) _refresh->stop();
         _unsubscribed = true;  // impede o destrutor de enviar desinteresse
     }
 
-    // ===================== PRODUTOR =====================
+    // ===================== produtor =====================
     void on_response_sent(std::function<void(uint64_t)> cb) { _on_response_sent = std::move(cb); }
     void on_disinterest_received(std::function<void(Unit)> cb) { _on_disinterest = std::move(cb); }
     uint64_t responses_sent() const { return _responses_sent.load(std::memory_order_relaxed); }
@@ -230,10 +201,7 @@ private:
         _comm->send(&msg);
     }
 
-    // Refresh REATIVO: reenvia o interesse SO se passou INTEREST_REFRESH_US sem
-    // receber Resposta. Em fluxo estavel fica quieto; no silencio (perda ou troca
-    // de quadrante, quando o filtro espacial corta os dados antigos) reanuncia --
-    // o reenvio e re-carimbado com o quadrante atual pela NIC. Sem GPS no cliente.
+    // Refresh REATIVO: reenvia o interesse SO se passou INTEREST_REFRESH_US sem receber respostas
     void reactive_tick() {
         int64_t last = _last_response_ns.load(std::memory_order_relaxed);
         if (Clock::now_ns() - last >= static_cast<int64_t>(Smart_Config::INTEREST_REFRESH_US) * 1000) {

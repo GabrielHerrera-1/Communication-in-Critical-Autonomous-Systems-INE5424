@@ -16,19 +16,7 @@
 #include "../../core/clock.h"
 #include "../../core/periodic_thread.h"
 
-// Cache de bindings do lado produtor. Agora cada registro guarda o ENDERECO de
-// quem demonstrou interesse: assim um desinteresse de um agente remove apenas o
-// registro DELE, sem derrubar os outros interessados na mesma Unit.
-//
-// Os bindings ficam num std::vector (um registro por (Unit, Address)); a busca
-// e feita filtrando o vetor. Numa "colisao" de Unit (varios interessados) nada
-// e descartado -- todos os registros ficam. Como as respostas sao broadcast,
-// mantemos UMA Periodic_Thread por Unit, que responde no periodo MAIS CURTO
-// entre os interessados daquela Unit (ver shortest_locked()).
-//
-// Soft-state: cada registro tem validade (expiry); o reenvio do interesse a
-// renova; um reaper remove registros expirados. O desinteresse explicito remove
-// na hora.
+
 class Binding_Cache {
 public:
     using Address = Vehicle_Protocol::Address;
@@ -49,8 +37,8 @@ public:
         _bindings.clear();
     }
 
-    // Interesse de 'addr' na 'unit' com 'period_us'. Se ja existe um registro
-    // desse mesmo addr para a unit, atualiza periodo/validade; senao adiciona.
+    // Interesse de addr na uni' com period_us. Se ja existe um registro
+    // desse mesmo addr para a unit, atualiza periodo e validade,  senao adiciona
     void on_interest(Unit unit, const Address & addr, uint64_t period_us) {
         if (period_us == 0) period_us = 1;
         std::lock_guard<std::mutex> lock(_mtx);
@@ -64,7 +52,7 @@ public:
         resync_threads();
     }
 
-    // Desinteresse de 'addr': remove apenas os registros dele para a unit. Os
+    // Desinteresse de addr: remove apenas os registros dele para a unit. Os
     // demais interessados continuam sendo atendidos.
     void on_disinterest(Unit unit, const Address & addr) {
         std::lock_guard<std::mutex> lock(_mtx);
@@ -80,7 +68,7 @@ public:
     void clear() {
         std::lock_guard<std::mutex> lock(_mtx);
         _bindings.clear();
-        _threads.clear(); // Destroi as threads, o que deve interromper sua execucao
+        _threads.clear(); // Destroi as threads, e interrompe a execucao
     }
 
 private:

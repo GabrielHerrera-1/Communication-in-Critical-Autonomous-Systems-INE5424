@@ -58,9 +58,7 @@ int RSU::run_gateway_process() {
 
     std::cout << "[RSU] master SPTP pronto. cenario validado." << std::endl;
 
-    // Etapa 5: a RSU E o broker do quadrante -- nó fixo, PTP master, sempre
-    // presente. Logo o broker fica SEMPRE ativo: rastreia interesse + presenca,
-    // reanuncia e manda parar. so2.rsu_repeat_us so ajusta o periodo de reanuncio.
+
     if (!_gateway.protocol()) {
         std::cerr << "[RSU] protocolo ausente; broker nao pode subir." << std::endl;
         return 1;
@@ -74,12 +72,10 @@ int RSU::run_gateway_process() {
         _gateway.protocol(),
         _gateway.protocol()->create_address(Component_Ports::GATEWAY),
         true);
-    // O broker se liga sozinho a presenca do PTP (pelo proprio canal, dentro da
-    // lib). A aplicacao so cria o broker -- nao cabla nada no Protocol.
+
+    // interest tracker da rsu
     Interest_Tracker tracker(&comm, repeat_us);
 
-    // Mantem o processo vivo: as threads de fundo do Protocol (SHM/raw recv,
-    // SPTP) e o broker seguem atendendo os slaves do quadrante.
     while (true) { pause(); }
 }
 

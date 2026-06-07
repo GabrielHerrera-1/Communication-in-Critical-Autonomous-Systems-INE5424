@@ -4,9 +4,7 @@
 #include <cstdint>
 #include "unit.h"
 
-// Descritores de tipo: associam um codigo TEDS (Unit) ao tipo do valor. NAO
-// contem logica de producao (isso vive no componente, via IProducer). So
-// parametrizam o SmartData<Tipo>.
+// Descritores de tipo: associam um codigo TEDS (Unit) ao tipo do valor.
 
 struct Speed_Data {
     static constexpr Unit UNIT = Unit::SPEED;

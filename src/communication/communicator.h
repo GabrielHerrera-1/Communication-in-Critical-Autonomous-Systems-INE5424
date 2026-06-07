@@ -5,18 +5,6 @@
 #include "../core/clock.h"
 #include "../core/observers/concurrent_observer.h"
 
-// O Communicator tem DOIS papeis no padrao observer:
-//
-//   1) E um Concurrent_Observer<Buffer> DO canal (Protocol): o Protocol o
-//      notifica com buffers crus (update(porta, buffer)).
-//   2) E um Concurrent_Observed<Message>: ele e OBSERVAVEL por mensagens. Ao
-//      receber um buffer do canal, faz o unmarshal numa Message (TypedMessage
-//      inteira) e a notifica aos seus observers (os SmartData).
-//
-// Assim o SmartData nao precisa drenar fila nem conhecer buffer: ele so observa
-// o Communicator e recebe Messages prontas. Se NAO houver observer anexado para
-// aquela condicao (componente legado), o update cai no caminho classico:
-// empilha o buffer para o receive() bloqueante.
 template <typename Channel>
 class Communicator
     : public Channel::Observer,  // Concurrent_Observer<Buffer, Port> (do canal)
@@ -53,8 +41,7 @@ public:
     // O SmartData se anexa a esta condicao para receber Interesse/Resposta.
     Condition broadcast_condition() const { return _broadcast_address.port(); }
 
-    // canal subjacente. O broker (Interest_Tracker) usa para se inscrever na
-    // presenca do PTP -- evita que a APLICACAO precise cablar isso no Protocol.
+    // canal subjacente. O broker (Interest_Tracker) usa para se inscrever na presenca do PTP
     Channel * channel() const { return _channel; }
 
     template <typename Payload>
