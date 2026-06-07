@@ -112,6 +112,11 @@ public:
 
         if (_role == PRODUCER && h->kind == SmartHeader::INTEREST) {
             if (m->size() >= sizeof(InterestMessage)) {
+
+                uint8_t q = m->quadrant();
+                uint8_t last = _last_seen_quad.exchange(q);
+                if(last != q) _cache->clear();
+
                 const InterestMessage * im = reinterpret_cast<const InterestMessage *>(m->data());
                 if (im->disinterest) {
                     _cache->on_disinterest(UNIT, m->address());
@@ -239,6 +244,7 @@ private:
     IProducer<Value> * _producer = nullptr;
     std::unique_ptr<Binding_Cache> _cache;
     std::atomic<uint64_t> _responses_sent{0};
+    std::atomic<uint8_t> _last_seen_quad{0xff};
     std::function<void(uint64_t)> _on_response_sent;
     std::function<void(Unit)> _on_disinterest;
 

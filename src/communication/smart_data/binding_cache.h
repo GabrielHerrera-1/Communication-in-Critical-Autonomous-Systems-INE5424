@@ -82,6 +82,14 @@ public:
         return shortest_locked(unit);
     }
 
+    // Limpa imediatamente todos os registros de interesse (bindings)
+    // e encerra todas as threads periodicas de transmissao associadas.
+    void clear() {
+        std::lock_guard<std::mutex> lock(_mtx);
+        _bindings.clear();
+        _threads.clear(); // Destroi as threads, o que deve interromper sua execucao
+    }
+
 private:
     struct Binding {
         Unit     unit;
@@ -144,6 +152,7 @@ private:
         return Clock::now_ns() + static_cast<int64_t>(life) * 1000;
     }
 
+    // removes expired interests
     void reap_loop(uint64_t reaper_period_us) {
         using namespace std::chrono;
         while (_running.load(std::memory_order_acquire)) {
