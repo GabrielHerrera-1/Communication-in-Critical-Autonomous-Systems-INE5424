@@ -8,7 +8,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <set>
 #include <thread>
 #include <utility>
@@ -23,6 +22,7 @@
 #include "smart_message.h"
 #include "unit.h"
 #include "binding_cache.h"
+#include "smart_helpers.h"
 
 struct Smart_Config {
     // Refresh REATIVO: tambem e o limiar de silencio. Reenvia o interesse so se
@@ -31,6 +31,9 @@ struct Smart_Config {
     static constexpr uint64_t BINDING_LIFETIME_MIN_US = 3'500'000; // binding expira apos 3.5s sem refresh
     static constexpr unsigned BINDING_LIFETIME_FACTOR = 4;
     static constexpr uint64_t REAPER_PERIOD_US        = 1'000'000;
+    // modo-valor: o ultimo valor e considerado fresco por ate N periodos sem
+    // atualizacao; depois disso, expired() (sem EWMA -- validade pelo periodo pedido)
+    static constexpr unsigned VALUE_TTL_FACTOR        = 3;
 };
 
 // SmartData<Tipo>: abstracao Interesse/Resposta (etapa 5). E um
@@ -43,7 +46,7 @@ struct Smart_Config {
 //     periodica que responde. Trata o interesse no proprio update().
 //   CONSUMIDOR: emite o Interesse (periodo) e ENFILEIRA as Respostas (a Message
 //     inteira) na fila do Concurrent_Observer; a aplicacao drena via
-//     receive_response()/get_value().
+//     receive_response() -- ou le o ultimo valor por value() no modo-valor.
 //
 // Tipo e um descritor {static Unit UNIT; struct Value;} -- so o tipo.
 //
@@ -73,9 +76,12 @@ public:
         _comm->attach(this, _comm->broadcast_condition()); // observa o Communicator
     }
 
-    // CONSUMIDOR
-    SmartData(Comm * comm, uint64_t period_us, bool auto_refresh = true)
-        : _comm(comm), _role(CONSUMER), _period_us(period_us ? period_us : 1) {
+    // CONSUMIDOR. value_mode=false (padrao): enfileira as Respostas (fluxo,
+    // drenado por receive_response). value_mode=true: NAO enfileira; guarda so o
+    // ULTIMO valor, lido como variavel por value()/operator Value().
+    SmartData(Comm * comm, uint64_t period_us, bool auto_refresh = true, bool value_mode = false)
+        : _comm(comm), _role(CONSUMER), _period_us(period_us ? period_us : 1),
+          _value_mode(value_mode) {
         _comm->attach(this, _comm->broadcast_condition());
         _last_response_ns.store(Clock::now_ns(), std::memory_order_relaxed);
         send_interest(false);
@@ -102,7 +108,7 @@ public:
             _refresh.reset();
         }
         _cache.reset();
-        drain_and_free(); // libera mensagens que ficaram na fila
+        drain_and_free(*this); // libera mensagens que ficaram na fila
     }
 
     // ===================== PUSH: o Communicator notifica =====================
@@ -133,8 +139,15 @@ public:
                 std::lock_guard<std::mutex> lock(_mtx);
                 _producers.insert(mac_key(m->address()));
                 ++_responses_received;
+                // modo-valor: guarda sempre o ultimo valor recebido
+                if (m->size() >= sizeof(ResponseMessage<Value>)) {
+                    _last_value = reinterpret_cast<const ResponseMessage<Value> *>(m->data())->value;
+                    _last_value_ns = Clock::now_ns();
+                    _has_value = true;
+                }
             }
-            Base::update(c, m); // ENFILEIRA a Message inteira (app drena)
+            if (_value_mode) delete m;       // so o ultimo valor importa -> nao enfileira
+            else Base::update(c, m);         // modo fila: ENFILEIRA a Message inteira (app drena)
         } else {
             delete m;
         }
@@ -145,16 +158,20 @@ public:
     // O chamador assume a posse e deve dar delete.
     Message * receive_response(int timeout_ms = -1) { return Base::updated(timeout_ms); }
 
-    // conveniencia: dequeue e devolve so o Value (libera a Message internamente).
-    std::optional<Value> get_value(int timeout_ms = -1) {
-        Message * m = Base::updated(timeout_ms);
-        if (!m) return std::nullopt;
-        std::optional<Value> v;
-        if (m->size() >= sizeof(ResponseMessage<Value>))
-            v = reinterpret_cast<const ResponseMessage<Value> *>(m->data())->value;
-        delete m;
-        return v;
+    // ---- modo-valor: o dado lido como uma variavel viva (estilo EPOS) ----
+    // ultimo valor recebido (Value{} se nunca recebeu -- cheque expired()/fresh())
+    Value value() const { std::lock_guard<std::mutex> l(_mtx); return _last_value; }
+    // operator Value(): trata o SmartData como o proprio dado (v = consumer)
+    operator Value() const { return value(); }
+    // true se nunca recebeu OU se ja passou VALUE_TTL_FACTOR periodos sem atualizar
+    bool expired() const {
+        std::lock_guard<std::mutex> l(_mtx);
+        if (!_has_value) return true;
+        int64_t age = Clock::now_ns() - _last_value_ns;
+        return age > static_cast<int64_t>(Smart_Config::VALUE_TTL_FACTOR) *
+                     static_cast<int64_t>(_period_us) * 1000;
     }
+    bool fresh() const { return !expired(); }
 
     std::size_t producer_count() const { std::lock_guard<std::mutex> l(_mtx); return _producers.size(); }
     uint64_t    response_count() const { std::lock_guard<std::mutex> l(_mtx); return _responses_received; }
@@ -192,13 +209,6 @@ private:
         return reinterpret_cast<const SmartHeader *>(m->data());
     }
 
-    static uint64_t mac_key(const Address & a) {
-        const uint8_t * mac = a.paddr().raw();
-        uint64_t k = 0;
-        for (int i = 0; i < 6; ++i) k = (k << 8) | mac[i];
-        return k;
-    }
-
     void respond(Unit /*UNIT*/) {
         ResponseMessage<Value> r;
         r.header.kind = SmartHeader::RESPONSE;
@@ -232,11 +242,6 @@ private:
         }
     }
 
-    void drain_and_free() {
-        Message * m;
-        while ((m = Base::updated(0)) != nullptr) delete m;
-    }
-
     Comm * _comm;
     Role   _role;
 
@@ -257,6 +262,11 @@ private:
     mutable std::mutex _mtx;
     std::set<uint64_t> _producers;
     uint64_t _responses_received = 0;
+    // modo-valor
+    bool     _value_mode = false;
+    Value    _last_value{};        // ultimo valor recebido (modo-valor)
+    int64_t  _last_value_ns = 0;   // quando o ultimo valor chegou
+    bool     _has_value = false;   // ja recebeu algum valor?
 };
 
 #endif

@@ -16,6 +16,7 @@
 #include "../communicator.h"
 #include "../message/message.h"
 #include "smart_message.h"
+#include "smart_helpers.h"
 #include "unit.h"
 
 // Broker de interesse na RSU (rastreamento passivo). E um Concurrent_Observer
@@ -55,7 +56,7 @@ public:
         _comm->channel()->set_presence_handler({});
         _comm->detach(this, _comm->broadcast_condition());
         _repeater.reset();
-        drain_and_free();
+        drain_and_free(*this);
     }
 
     // Presenca: o SPTP master chama isto a cada REQUEST_SYNC (via Protocol).
@@ -63,9 +64,6 @@ public:
         std::lock_guard<std::mutex> lock(_mtx);
         _presence[mac_key(from)] = Clock::now_ns();
     }
-
-    uint64_t disinterests_sent() const { return _disinterests_sent.load(std::memory_order_relaxed); }
-    std::size_t presence_count() const { std::lock_guard<std::mutex> l(_mtx); return _presence.size(); }
 
     // push: registra interesses ouvidos (ignora respostas). Nao enfileira.
     void update(Port /*c*/, Message * m) override {
@@ -105,13 +103,6 @@ private:
         Address  address;
         uint64_t period_us;
     };
-
-    static uint64_t mac_key(const Address & a) {
-        const uint8_t * mac = a.paddr().raw();
-        uint64_t k = 0;
-        for (int i = 0; i < 6; ++i) k = (k << 8) | mac[i];
-        return k;
-    }
 
     // Tick do broker: (1) purga veiculos cujo lease de presenca expirou e seus
     // interesses; (2) reanuncia os interesses ativos; (3) manda desinteresse para
@@ -172,11 +163,6 @@ private:
         im.disinterest = disinterest ? 1 : 0;
         TypedMessage<InterestMessage> msg(im);
         _comm->send(&msg);
-    }
-
-    void drain_and_free() {
-        Message * m;
-        while ((m = Base::updated(0)) != nullptr) delete m;
     }
 
     Comm * _comm;

@@ -24,7 +24,7 @@
 // e feita filtrando o vetor. Numa "colisao" de Unit (varios interessados) nada
 // e descartado -- todos os registros ficam. Como as respostas sao broadcast,
 // mantemos UMA Periodic_Thread por Unit, que responde no periodo MAIS CURTO
-// entre os interessados daquela Unit (ver shortest_period()).
+// entre os interessados daquela Unit (ver shortest_locked()).
 //
 // Soft-state: cada registro tem validade (expiry); o reenvio do interesse a
 // renova; um reaper remove registros expirados. O desinteresse explicito remove
@@ -73,13 +73,6 @@ public:
                 [&](const Binding & b) { return b.unit == unit && b.address == addr; }),
             _bindings.end());
         resync_threads();
-    }
-
-    // O periodo MAIS CURTO (maior frequencia) pedido para a unit; 0 se ninguem
-    // mais a quer.
-    uint64_t shortest_period(Unit unit) {
-        std::lock_guard<std::mutex> lock(_mtx);
-        return shortest_locked(unit);
     }
 
     // Limpa imediatamente todos os registros de interesse (bindings)

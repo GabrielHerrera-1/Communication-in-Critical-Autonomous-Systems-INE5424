@@ -65,6 +65,7 @@ INTEREST_LIFECYCLE_BIN := $(BIN_DIR)/interest_lifecycle
 INTEREST_SCALE_BIN := $(BIN_DIR)/interest_scale
 INTEREST_RSU_REPEAT_BIN := $(BIN_DIR)/interest_rsu_repeat
 INTEREST_PRESENCE_BIN := $(BIN_DIR)/interest_presence
+INTEREST_VALUE_BIN := $(BIN_DIR)/interest_value
 INTEREST_QUADRANT_BIN := $(BIN_DIR)/interest_quadrant
 INTEREST_SCALE_MEM ?= 128
 LIB_NAME := so2
@@ -72,7 +73,7 @@ STATIC_LIB := $(LIB_DIR)/lib$(LIB_NAME).a
 
 DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
-.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant test-interest test-interest-basic test-interest-period test-interest-lifecycle test-interest-rsu-repeat test-interest-presence test-interest-quadrant test-interest-scale gps-module gps-rebuild measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
+.PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant test-interest test-interest-basic test-interest-period test-interest-lifecycle test-interest-rsu-repeat test-interest-presence test-interest-value test-interest-quadrant test-interest-scale gps-module gps-rebuild measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime
 
@@ -232,6 +233,13 @@ test-interest-presence: select-qemu-cpu $(INTEREST_PRESENCE_BIN) $(RUN_QEMU_TEST
 	@for f in $(LOG_DIR)/interest-presence/latest/logs/vm*.log; do grep -aE "ABANDONANDO|desinteresse recebido da RSU|Interest_Tracker" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-presence aprovado."
 
+# modo-valor: consumidor le o dado como variavel (value()/operator Value() + fresh)
+test-interest-value: select-qemu-cpu $(INTEREST_VALUE_BIN) $(RUN_QEMU_TEST)
+	@echo "[test] interest-value: 3 VMs (RSU + produtor + consumidor modo-valor)..."
+	@TIMEOUT_SEC=120 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_VALUE_BIN)" 3 interest-value "cenario validado."
+	@for f in $(LOG_DIR)/interest-value/latest/logs/vm*.log; do grep -aE "RESUMO|value\.seq" "$$f" | sed 's/^/    /' || true; done
+	@echo "[test] interest-value aprovado."
+
 # interesse x quadrante (WITH_GPS): suprime o refresh na troca de quadrante
 test-interest-quadrant: select-qemu-cpu $(INTEREST_QUADRANT_BIN) $(RUN_QEMU_TEST) gps-module
 	@echo "[test] interest-quadrant: 2 VMs WITH_GPS (RSU fixa + subscriber movel)..."
@@ -247,7 +255,7 @@ test-interest-scale: select-qemu-cpu $(INTEREST_SCALE_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] interest-scale aprovado."
 
 # suite leve (sem escala/quadrante)
-test-interest: test-interest-basic test-interest-period test-interest-lifecycle test-interest-rsu-repeat test-interest-presence
+test-interest: test-interest-basic test-interest-period test-interest-lifecycle test-interest-rsu-repeat test-interest-presence test-interest-value
 	@echo "[test] suite interest aprovada."
 
 test-stress: select-qemu-cpu $(STRESS_BIN) $(RUN_QEMU_TEST)
