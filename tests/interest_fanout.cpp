@@ -49,7 +49,7 @@ public:
         sleep(WINDOW_S);
         uint64_t count = producer.responses_sent() - r0;
 
-        // 1 thread @ 250ms em 12s ~ 48. 2 threads (250+500) ~ 72. O limite
+        // 1 thread  250ms em 12s ~ 48. 2 threads (250+500) ~ 72. O limite
         // superior separa os dois casos; o inferior garante que produziu.
         const uint64_t one_thread = static_cast<uint64_t>(WINDOW_S) * 1000000ULL / PERIOD_FAST; // 48
         const uint64_t lo = one_thread * 6 / 10;   // ~28

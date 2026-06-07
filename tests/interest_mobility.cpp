@@ -29,9 +29,8 @@ namespace {
 
 const char LABEL[]       = "interest-mobility";
 const int  VM_COUNT      = 9;
-const int  RSU_VM        = 1;
-const int  FIRST_PROD_VM = 2;   // vm2..vm5
-const int  FIRST_CONS_VM = 6;   // vm6..vm9
+const int  FIRST_PROD_VM = 5;   // vm5 .. vm7
+const int  FIRST_CONS_VM = 8;   // vm8 e vm9
 const uint64_t PERIOD_US = 300'000;
 const int  STARTUP_S     = 5;
 const int  MAX_WAIT_S    = 100;
@@ -101,7 +100,7 @@ private:
 
 int main() {
     const int vm_id = detect_vm_id(LABEL, VM_COUNT);
-    if (vm_id == RSU_VM) { RSU rsu; rsu.initialize(); rsu.run(); return 0; }
+    if (vm_id < FIRST_PROD_VM) { RSU rsu; rsu.initialize(); rsu.run(); return 0; }
 
     Vehicle vehicle(false);
     if (vm_id >= FIRST_CONS_VM)
