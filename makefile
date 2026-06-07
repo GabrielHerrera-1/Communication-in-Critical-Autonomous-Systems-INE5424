@@ -257,14 +257,14 @@ test-interest-rsu-repeat: select-qemu-cpu $(INTEREST_RSU_REPEAT_BIN) $(RUN_QEMU_
 # T1/T6: mobilidade/handover real (WITH_GPS) -- produtor + consumidor moveis
 test-interest-mobility: select-qemu-cpu $(INTEREST_MOBILITY_BIN) $(RUN_QEMU_TEST) gps-module
 	@echo "[test] interest-mobility: 3 VMs WITH_GPS (RSU + produtor movel + consumidor movel)..."
-	@TIMEOUT_SEC=120 WITH_GPS=1 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_MOBILITY_BIN)" 3 interest-mobility "cenario validado."
+	@TIMEOUT_SEC=120 WITH_GPS=1 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_MOBILITY_BIN)" 9 interest-mobility "cenario validado."
 	@for f in $(LOG_DIR)/interest-mobility/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-mobility aprovado."
 
 # escala: >=20 veiculos COM MULTIPLOS componentes (3 prod + 2 cons cada)
 test-interest-scale: select-qemu-cpu $(INTEREST_SCALE_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] interest-scale: 22 VMs (RSU + 21 veiculos x 5 componentes)..."
-	@TIMEOUT_SEC=240 QEMU_MEM=$(INTEREST_SCALE_MEM) LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_SCALE_BIN)" 21 interest-scale "cenario validado."
+	@TIMEOUT_SEC=300 QEMU_MEM=$(INTEREST_SCALE_MEM) LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_SCALE_BIN)" 21 interest-scale "cenario validado."
 	@for f in $(LOG_DIR)/interest-scale/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-scale aprovado."
 

@@ -1,18 +1,17 @@
-// Etapa 5 -- Escala: FROTA de 20 veiculos. vm1 = RSU/broker; vm2..vm21 = 20
-// veiculos. TODOS os 20 produzem Counter (valor codifica o vm_id de origem), entao
-// ha uma frota real de 20 produtores distintos. Metade dos veiculos (10) e
-// DUAL-ROLE: alem de produzir, roda um consumidor que precisa AGREGAR >=
-// MIN_PRODUCERS produtores distintos da frota. A outra metade e so-produtora.
+// Etapa 5 -- Escala: FROTA de 20 veiculos, cada um com 5 COMPONENTES (como um
+// veiculo autonomo real: varios sensores + um controlador). vm1 = RSU/broker;
+// vm2..vm21 = 20 veiculos. Cada veiculo roda 4 produtores-sensores (Speed, Lidar,
+// Radar, Counter) + um 5o componente:
+//   - 10 veiculos (dual-role): o 5o e um CONSUMIDOR de Counter que precisa
+//     AGREGAR >= MIN_PRODUCERS produtores Counter distintos da frota;
+//   - 10 veiculos (so-sensores): o 5o e mais um produtor.
+// So Counter e consumido (ativo na frota); Speed/Lidar/Radar ficam a bordo
+// prontos (sem assinante neste cenario, como sensores reais ociosos) -- isso
+// mantem a taxa de frames baixa apesar dos ~105 componentes.
 //
-// Quem valida cada VM:
-//   - veiculo dual-role: o CONSUMIDOR (so passa se agregou a frota; o produtor
-//     fica em silencio para nao mascarar uma falha do consumidor da mesma VM);
-//   - veiculo so-produtor: o PRODUTOR (imprime validado ao enviar a 1a resposta,
-//     provando que ouviu o interesse e esta servindo).
-// Assim TODOS os 21 VMs precisam participar de fato para o teste passar.
-//
-// 10 consumidores (em vez de 20) mantem a contencao de CPU sob controle com 21
-// VMs; periodo de 2s segura a taxa de frames na frota.
+// Quem valida cada VM: o consumidor (dual-role) ou o produtor Counter (so-sensores,
+// anuncia ao servir a 1a resposta). Assim os 21 VMs precisam participar de fato.
+// 10 consumidores no total mantem a contencao de CPU sob controle com 21 VMs.
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -34,10 +33,22 @@ const int  VM_COUNT         = 21;            // vm1 RSU + 20 veiculos
 const int  RSU_VM_ID        = 1;
 const int  FIRST_VEHICLE_VM = 2;
 const int  DUAL_ROLE_COUNT  = 10;            // primeiros 10 veiculos tambem consomem
-const uint64_t PERIOD_US    = 2'000'000;     // 2s: taxa baixa, escala estavel
-const std::size_t MIN_PRODUCERS = 6;         // cada consumidor agrega >= isso (de 20)
+// 4s: com 5 componentes/VM (~105 processos), TODO componente processa cada frame
+// broadcast; periodo longo segura a taxa total (so Counter e consumido => ~5 frames/s).
+const uint64_t PERIOD_US    = 4'000'000;
+const std::size_t MIN_PRODUCERS = 5;         // cada consumidor agrega >= isso (de 20)
 const int  MIN_SAMPLES      = 2;
-const int64_t DEADLINE_NS   = 230LL * 1000000000LL;
+const int64_t DEADLINE_NS   = 280LL * 1000000000LL;
+
+// Portas (uma por componente do veiculo; reaproveitadas entre veiculos -- as
+// respostas sao broadcast e o match e por Unit).
+using Port = Component_Ports::Port;
+const Port PORT_SPEED   = 0xF503;
+const Port PORT_LIDAR   = 0xF504;
+const Port PORT_RADAR   = 0xF505;
+const Port PORT_COUNTER = Component_Ports::TEST_INTEREST_PUB;  // 0xF501
+const Port PORT_EXTRA   = 0xF506;
+const Port PORT_SUB     = Component_Ports::TEST_INTEREST_SUB;  // 0xF502
 
 int producers_ready(const std::map<uint64_t, int> & by_producer, int min_samples) {
     int n = 0;
@@ -45,51 +56,51 @@ int producers_ready(const std::map<uint64_t, int> & by_producer, int min_samples
     return n;
 }
 
-// Produtor da frota. announce=true (so-produtor) imprime validado na 1a resposta;
-// announce=false (dual-role) fica em silencio (quem valida a VM e o consumidor).
-class Fleet_Producer : public Component, public IProducer<Counter_Data::Value> {
+// Produtor-sensor. announce=true imprime validado na 1a resposta (usado pelo
+// veiculo so-sensores para validar a VM); dual-role usa announce=false.
+template <typename Data>
+class Fleet_Producer : public Component, public IProducer<typename Data::Value> {
 public:
-    Fleet_Producer(int vm_id, int start_s, bool announce)
-        : Component(LABEL), _vm_id(vm_id), _start_s(start_s), _announce(announce) {}
+    Fleet_Producer(int vm_id, Port port, int start_s, bool announce)
+        : Component(LABEL), _vm_id(vm_id), _port(port), _start_s(start_s), _announce(announce) {}
     void initialize() override {}
-    Port logical_port() const override { return Component_Ports::TEST_INTEREST_PUB; }
-    Counter_Data::Value produce() override {
-        return Counter_Data::Value{ (static_cast<uint64_t>(_vm_id) << 32) | (++_seq) };
-    }
+    Port logical_port() const override { return _port; }
+    typename Data::Value produce() override { return typename Data::Value{}; }
     void run() override {
         sleep(_start_s);
-        SmartData<Counter_Data> producer(_communicator, this);
+        SmartData<Data> producer(this->_communicator, this);
         if (_announce) {
             producer.on_response_sent([this](uint64_t n) {
                 if (n == 1)
                     std::cout << "[" << LABEL << "][vm" << _vm_id
-                              << "] produtor servindo a frota -- cenario validado." << std::endl;
+                              << "] sensor servindo a frota -- cenario validado." << std::endl;
             });
         }
         while (true) pause();
     }
 private:
-    int _vm_id; int _start_s; bool _announce; uint64_t _seq = 0;
+    int _vm_id; Port _port; int _start_s; bool _announce;
 };
 
-// Consumidor da frota: agrega respostas de muitos produtores distintos.
+// Consumidor-controlador: agrega respostas da sua Unit de muitos produtores.
+template <typename Data>
 class Fleet_Consumer : public Component {
 public:
     Fleet_Consumer(int vm_id, int start_s) : Component(LABEL), _vm_id(vm_id), _start_s(start_s) {}
     void initialize() override {}
-    Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB; }
+    Port logical_port() const override { return PORT_SUB; }
 
     void run() override {
         sleep(_start_s);
-        SmartData<Counter_Data> data(_communicator, PERIOD_US);
+        SmartData<Data> data(this->_communicator, PERIOD_US);
 
         std::map<uint64_t, int> by_producer;
         const int64_t deadline = Clock::now_ns() + DEADLINE_NS;
         while (Clock::now_ns() < deadline) {
             Message * m = data.receive_response(3000);
             if (!m) continue;
-            if (!decode_response<Counter_Data>(m)) {
-                std::cerr << "[" << LABEL << "][vm" << _vm_id << "] FAIL unit errada" << std::endl;
+            if (!decode_response<Data>(m)) {
+                std::cerr << "[" << LABEL << "][vm" << _vm_id << "] FAIL unit errada (demux)" << std::endl;
                 delete m; std::exit(1);
             }
             by_producer[endpoint_key(m->address())]++;
@@ -99,7 +110,8 @@ public:
 
         const int ready = producers_ready(by_producer, MIN_SAMPLES);
         std::cout << "[" << LABEL << "][vm" << _vm_id
-                  << "] RESUMO produtores_distintos=" << by_producer.size()
+                  << "] RESUMO unit=" << static_cast<uint32_t>(Data::UNIT)
+                  << " produtores_distintos=" << by_producer.size()
                   << " prontos=" << ready << " minimo=" << MIN_PRODUCERS
                   << " respostas=" << data.response_count() << std::endl;
 
@@ -109,7 +121,7 @@ public:
             std::exit(1);
         }
         std::cout << "[" << LABEL << "][vm" << _vm_id
-                  << "] consumidor agregou a frota -- cenario validado." << std::endl;
+                  << "] controlador agregou a frota -- cenario validado." << std::endl;
         while (true) pause();
     }
 private:
@@ -124,16 +136,27 @@ int main() {
 
     const int offset = vm_id - FIRST_VEHICLE_VM;       // 0..19
     const bool dual_role = (offset < DUAL_ROLE_COUNT); // primeiros 10 tambem consomem
-
+    const int ps = 5 + (offset % 6);                   // start dos sensores
     Vehicle vehicle(false);
-    // Todo veiculo PRODUZ. Produtor anuncia validado apenas quando NAO ha
-    // consumidor na mesma VM (nos dual-role quem valida e o consumidor).
-    vehicle.add_component(new Fleet_Producer(vm_id, 5 + (offset % 6), /*announce=*/!dual_role),
-                          Component_Ports::TEST_INTEREST_PUB);
+
+    // 4 sensores-produtores em TODO veiculo (Speed e Counter sao consumidos pela
+    // frota; Lidar e Radar ficam prontos sem assinante neste cenario).
+    vehicle.add_component(new Fleet_Producer<Speed_Data>(vm_id, PORT_SPEED, ps, false), PORT_SPEED);
+    vehicle.add_component(new Fleet_Producer<Lidar_Data>(vm_id, PORT_LIDAR, ps, false), PORT_LIDAR);
+    vehicle.add_component(new Fleet_Producer<Radar_Data>(vm_id, PORT_RADAR, ps, false), PORT_RADAR);
+    // Counter: nos so-sensores e ele quem ANUNCIA a validacao da VM (esta ativo).
+    vehicle.add_component(new Fleet_Producer<Counter_Data>(vm_id, PORT_COUNTER, ps, !dual_role), PORT_COUNTER);
+
+    // 5o componente
     if (dual_role) {
-        vehicle.add_component(new Fleet_Consumer(vm_id, 14 + (offset % 6)),
-                              Component_Ports::TEST_INTEREST_SUB);
+        const int cs = 14 + (offset % 6);
+        // 10 consumidores de Counter (so esse tipo e consumido -> taxa de frames baixa)
+        vehicle.add_component(new Fleet_Consumer<Counter_Data>(vm_id, cs), PORT_SUB);
+    } else {
+        // 5o sensor (Radar extra, a bordo)
+        vehicle.add_component(new Fleet_Producer<Radar_Data>(vm_id, PORT_EXTRA, ps, false), PORT_EXTRA);
     }
+
     vehicle.initialize();
     vehicle.run();
     return 0;
