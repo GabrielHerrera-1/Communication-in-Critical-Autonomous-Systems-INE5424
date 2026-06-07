@@ -35,11 +35,15 @@ public:
     // nic->send(buf). Usado pelo REQUEST_SYNC pra marcar t2 com simetria
     // em relacao a t1 (gravado no mesmo ponto, do lado master)
     using SendFn = int(*)(Address from, Address to, const void* data, unsigned int size, int64_t ts, PacketKind kind, int64_t * tx_ts_out);
+    // Etapa 5 (broker): o master avisa a presenca de um veiculo a cada REQUEST_SYNC
+    // (o MAC de quem pediu sync). A RSU usa isso como roster do quadrante.
+    using PresenceFn = void(*)(Address);
 
-    SPTP_Protocol(Address own_addr, bool is_master, SendFn send_fn)
+    SPTP_Protocol(Address own_addr, bool is_master, SendFn send_fn, PresenceFn presence_fn = nullptr)
         : _own_addr(own_addr),
           _is_master(is_master),
           _send(send_fn),
+          _on_presence(presence_fn),
           _current_delay_ns(Cfg::INITIAL_DELAY_NS),
           _current_offset_ns(0),
           _pending_t2_ns(0),
@@ -124,6 +128,9 @@ public:
                 std::memcpy(&req, payload, sizeof(req));
 
                 send_sync_reply(sender_addr, req.seq_id, t2_prime);
+
+                // broker: registra a presenca do veiculo (MAC de quem sincroniza)
+                if (_on_presence) _on_presence(sender_addr);
             }
             return;
         }
@@ -267,6 +274,7 @@ private:
     Address _own_addr;
     bool    _is_master;
     SendFn  _send;
+    PresenceFn _on_presence;  // broker: avisa presenca a cada REQUEST_SYNC (master)
 
     int64_t _current_delay_ns;
     int64_t _current_offset_ns;

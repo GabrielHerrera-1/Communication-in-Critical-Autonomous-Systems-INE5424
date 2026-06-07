@@ -14,6 +14,7 @@
 #include <cstring>
 #include <limits>
 #include <type_traits>
+#include <functional>
 #include <iostream>
 
 // Communication Protocol
@@ -173,9 +174,18 @@ public:
             // quadrante no GPS -- e uma estacao fixa, nao se desloca.
             _socket_nic->set_fixed(is_master);
             Address own_addr(_socket_nic->address(), 0);
-            _sptp = new SPTP_Protocol<Address>(own_addr, _is_master, &Protocol::send);
+            // Etapa 5 (broker): &Protocol::on_presence repassa o MAC de cada
+            // REQUEST_SYNC ao handler de presenca (a RSU registra o tracker la).
+            _sptp = new SPTP_Protocol<Address>(own_addr, _is_master,
+                                               &Protocol::send, &Protocol::on_presence);
             _sptp->start();
         }
+    }
+
+    // Etapa 5 (broker): a RSU registra aqui o callback de presenca; o SPTP master
+    // o chama (via on_presence) a cada REQUEST_SYNC, com o MAC de quem sincroniza.
+    void set_presence_handler(std::function<void(Address)> h) {
+        _presence_handler = std::move(h);
     }
 
     void disable_sync() {
@@ -383,14 +393,22 @@ private:
             _instance->_sptp->request_resync();
     }
 
+    // Etapa 5 (broker): o SPTP master chama isto a cada REQUEST_SYNC, com o MAC
+    // de quem sincroniza. Repassa ao handler de presenca que a RSU registrou.
+    static void on_presence(Address from){
+        if (_instance && _instance->_presence_handler)
+            _instance->_presence_handler(from);
+    }
+
 
 private:
     SharedMemoryNIC _shm_nic;
     RawSocketNIC *_socket_nic;
     Address _address;
     bool _is_master;
+    std::function<void(Address)> _presence_handler; // broker: presenca via PTP
     // Channel protocols are usually singletons
-    static Observed _observed;  
+    static Observed _observed;
     static Protocol* _instance; // ponteiro pro singleton
     SPTP_Protocol<Address>* _sptp = nullptr;
 };

@@ -14,7 +14,6 @@
 #include <utility>
 
 #include "../../channel/vehicle_protocol.h"
-#include "../../network/gps.h"
 #include "../../core/clock.h"
 #include "../../core/periodic_thread.h"
 #include "../../core/observers/concurrent_observer.h"
@@ -26,7 +25,9 @@
 #include "binding_cache.h"
 
 struct Smart_Config {
-    static constexpr uint64_t INTEREST_REFRESH_US     = 1'000'000; // reenvia interesse a cada 1s
+    // Refresh REATIVO: tambem e o limiar de silencio. Reenvia o interesse so se
+    // passou este tempo sem receber Resposta (e o periodo com que o checa).
+    static constexpr uint64_t INTEREST_REFRESH_US     = 1'000'000; // 1s de silencio -> reenvia
     static constexpr uint64_t BINDING_LIFETIME_MIN_US = 3'500'000; // binding expira apos 3.5s sem refresh
     static constexpr unsigned BINDING_LIFETIME_FACTOR = 4;
     static constexpr uint64_t REAPER_PERIOD_US        = 1'000'000;
@@ -76,10 +77,15 @@ public:
     SmartData(Comm * comm, uint64_t period_us, bool auto_refresh = true)
         : _comm(comm), _role(CONSUMER), _period_us(period_us ? period_us : 1) {
         _comm->attach(this, _comm->broadcast_condition());
+        _last_response_ns.store(Clock::now_ns(), std::memory_order_relaxed);
         send_interest(false);
         if (auto_refresh) {
+            // Refresh REATIVO: so reenvia o interesse apos um silencio de dados.
+            // Em fluxo estavel fica quieto; ao trocar de quadrante o filtro
+            // espacial corta os dados antigos -> silencio -> reenvio re-carimbado
+            // com o quadrante novo pela NIC (mobilidade implicita, sem GPS).
             _refresh = std::make_unique<Periodic_Thread>(
-                Smart_Config::INTEREST_REFRESH_US, [this] { refresh_tick(); });
+                Smart_Config::INTEREST_REFRESH_US, [this] { reactive_tick(); });
         } else {
             for (int i = 0; i < 2; ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -116,6 +122,8 @@ public:
             }
             delete m; // tratado na hora
         } else if (_role == CONSUMER && h->kind == SmartHeader::RESPONSE) {
+            // marca atividade: alimenta o refresh reativo (so reenvia no silencio)
+            _last_response_ns.store(Clock::now_ns(), std::memory_order_relaxed);
             {
                 std::lock_guard<std::mutex> lock(_mtx);
                 _producers.insert(mac_key(m->address()));
@@ -145,7 +153,8 @@ public:
 
     std::size_t producer_count() const { std::lock_guard<std::mutex> l(_mtx); return _producers.size(); }
     uint64_t    response_count() const { std::lock_guard<std::mutex> l(_mtx); return _responses_received; }
-    uint64_t    quadrant_suppressions() const { return _quadrant_suppressions.load(std::memory_order_relaxed); }
+    // nº de reenvios reativos do interesse (1s seco) -- observabilidade do keep-alive
+    uint64_t    reissues() const { return _reissues.load(std::memory_order_relaxed); }
 
     void unsubscribe() {
         if (_role != CONSUMER || _unsubscribed) return;
@@ -155,6 +164,16 @@ public:
             send_interest(true);
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
+    }
+
+    // saida ABRUPTA: para de reanunciar e NAO envia desinteresse (simula um
+    // veiculo que some/cai). A RSU detecta a saida por presenca (lease PTP) e
+    // manda parar os produtores -- e o caminho que o desinteresse explicito nao
+    // cobre.
+    void abandon() {
+        if (_role != CONSUMER) return;
+        if (_refresh) _refresh->stop();
+        _unsubscribed = true;  // impede o destrutor de enviar desinteresse
     }
 
     // ===================== PRODUTOR =====================
@@ -196,18 +215,16 @@ private:
         _comm->send(&msg);
     }
 
-    // refresh com consciencia de quadrante: ao trocar de quadrante, suprime o
-    // reenvio neste ciclo (le o mesmo /dev/gps do gateway).
-    void refresh_tick() {
-        uint8_t qd = _gps.quadrant();
-        uint8_t last = _last_quadrant.load(std::memory_order_relaxed);
-        if (qd != GPS::QUADRANT_NONE && last != GPS::QUADRANT_NONE && qd != last) {
-            _last_quadrant.store(qd, std::memory_order_relaxed);
-            _quadrant_suppressions.fetch_add(1, std::memory_order_relaxed);
-            return;
+    // Refresh REATIVO: reenvia o interesse SO se passou INTEREST_REFRESH_US sem
+    // receber Resposta. Em fluxo estavel fica quieto; no silencio (perda ou troca
+    // de quadrante, quando o filtro espacial corta os dados antigos) reanuncia --
+    // o reenvio e re-carimbado com o quadrante atual pela NIC. Sem GPS no cliente.
+    void reactive_tick() {
+        int64_t last = _last_response_ns.load(std::memory_order_relaxed);
+        if (Clock::now_ns() - last >= static_cast<int64_t>(Smart_Config::INTEREST_REFRESH_US) * 1000) {
+            _reissues.fetch_add(1, std::memory_order_relaxed);
+            send_interest(false);
         }
-        _last_quadrant.store(qd, std::memory_order_relaxed);
-        send_interest(false);
     }
 
     void drain_and_free() {
@@ -227,9 +244,8 @@ private:
 
     // consumidor
     uint64_t _period_us = 0;
-    GPS _gps;
-    std::atomic<uint8_t>  _last_quadrant{GPS::QUADRANT_NONE};
-    std::atomic<uint64_t> _quadrant_suppressions{0};
+    std::atomic<int64_t>  _last_response_ns{0}; // ultima Resposta recebida (refresh reativo)
+    std::atomic<uint64_t> _reissues{0};         // reenvios reativos do interesse
     std::unique_ptr<Periodic_Thread> _refresh;
     bool _unsubscribed = false;
     mutable std::mutex _mtx;

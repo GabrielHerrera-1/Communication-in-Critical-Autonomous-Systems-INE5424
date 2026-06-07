@@ -53,6 +53,10 @@ public:
     // O SmartData se anexa a esta condicao para receber Interesse/Resposta.
     Condition broadcast_condition() const { return _broadcast_address.port(); }
 
+    // canal subjacente. O broker (Interest_Tracker) usa para se inscrever na
+    // presenca do PTP -- evita que a APLICACAO precise cablar isso no Protocol.
+    Channel * channel() const { return _channel; }
+
     template <typename Payload>
     bool send(TypedMessage<Payload> * message) {
         message->timestamp(Clock::monotonic_stamp());

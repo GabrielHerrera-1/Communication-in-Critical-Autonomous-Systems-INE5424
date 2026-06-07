@@ -58,17 +58,20 @@ int RSU::run_gateway_process() {
 
     std::cout << "[RSU] master SPTP pronto. cenario validado." << std::endl;
 
-    // Etapa 5 (rastreamento passivo): se so2.rsu_repeat_us estiver setado, a RSU
-    // cria um Communicator no proprio gateway e um Interest_Tracker que o
-    // observa, registrando e reenviando os interesses ouvidos.
+    // Etapa 5: a RSU E o broker do quadrante -- nó fixo, PTP master, sempre
+    // presente. Logo o broker fica SEMPRE ativo: rastreia interesse + presenca,
+    // reanuncia e manda parar. so2.rsu_repeat_us so ajusta o periodo de reanuncio.
     uint64_t repeat_us = read_rsu_repeat_us();
-    if (repeat_us > 0 && _gateway.protocol()) {
-        std::cout << "[RSU] rastreamento passivo de interesses ativo (repeat_us="
+    if (repeat_us == 0) repeat_us = 1'500'000; // padrao: reanuncia a cada 1.5s
+    if (_gateway.protocol()) {
+        std::cout << "[RSU] broker de interesse ativo (repeat_us="
                   << repeat_us << ")" << std::endl;
         Communicator<Vehicle_Protocol> comm(
             _gateway.protocol(),
             _gateway.protocol()->create_address(Component_Ports::GATEWAY),
             true);
+        // O broker se liga sozinho a presenca do PTP (pelo proprio canal, dentro
+        // da lib). A aplicacao so cria o broker -- nao cabla nada no Protocol.
         Interest_Tracker tracker(&comm, repeat_us);
         while (true) { pause(); }
     }

@@ -1,7 +1,11 @@
-// Etapa 5 -- Interesse x quadrante (etapa 4). Anotacao: "se alguem vai ficar
-// reenviando interesse, para de enviar na troca de quadrante". vm1 RSU fixa;
-// vm2 subscriber MOVEL (le o mesmo /dev/gps do gateway) suprime o refresh a
-// cada troca de quadrante. WITH_GPS=1.
+// Etapa 5 -- Refresh REATIVO do interesse (base da mobilidade implicita).
+//
+// Parte A: o consumidor reenvia o interesse SO apos um silencio de dados (sem
+// GPS no cliente). Aqui nao ha produtor, entao o consumidor fica em silencio e
+// reanuncia a cada INTEREST_REFRESH_US -- e isso que prova o keep-alive reativo
+// que, na troca de quadrante, dispara o reenvio re-carimbado pela NIC. O teste
+// de mobilidade multi-quadrante ponta-a-ponta vem com a Parte B (presenca na
+// RSU). WITH_GPS=1 (irrelevante pro cliente agora; so mantem o cenario).
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -20,7 +24,7 @@ namespace {
 const int      VM_COUNT         = 2;
 const int      RSU_VM_ID        = 1;
 const uint64_t PERIOD_US        = 300'000;
-const uint64_t NEEDED_SUPP      = 2;
+const uint64_t NEEDED_REISSUES  = 2;
 const int      MAX_WAIT_S       = 60;
 const int      STARTUP_DELAY_S  = 5;
 
@@ -47,37 +51,37 @@ int detect_vm_id() {
     std::cerr << "[" << LABEL << "] so2.vm_id ausente" << std::endl; std::exit(1);
 }
 
-class Moving_Subscriber : public Component {
+class Reactive_Subscriber : public Component {
 public:
-    explicit Moving_Subscriber(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
+    explicit Reactive_Subscriber(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB; }
 
     void run() override {
         sleep(STARTUP_DELAY_S);
         std::cout << "[" << LABEL << "][vm" << _vm_id
-                  << "] subscriber movel: refresh suprime na troca de quadrante" << std::endl;
+                  << "] subscriber reativo: reanuncia o interesse no silencio de dados" << std::endl;
 
         SmartData<Counter_Data> consumer(_communicator, PERIOD_US);
 
         uint64_t last = 0;
-        for (int i = 0; i < MAX_WAIT_S && consumer.quadrant_suppressions() < NEEDED_SUPP; ++i) {
+        for (int i = 0; i < MAX_WAIT_S && consumer.reissues() < NEEDED_REISSUES; ++i) {
             sleep(1);
-            uint64_t s = consumer.quadrant_suppressions();
-            if (s != last) {
-                last = s;
+            uint64_t r = consumer.reissues();
+            if (r != last) {
+                last = r;
                 std::cout << "[" << LABEL << "][vm" << _vm_id
-                          << "] troca de quadrante -> interesse suprimido (total=" << s << ")" << std::endl;
+                          << "] silencio -> reenvio reativo do interesse (total=" << r << ")" << std::endl;
             }
         }
 
-        const uint64_t supp = consumer.quadrant_suppressions();
+        const uint64_t r = consumer.reissues();
         std::cout << "[" << LABEL << "][vm" << _vm_id
-                  << "] RESUMO supressoes_por_troca_de_quadrante=" << supp << std::endl;
+                  << "] RESUMO reenvios_reativos=" << r << std::endl;
 
-        if (supp < NEEDED_SUPP) {
+        if (r < NEEDED_REISSUES) {
             std::cerr << "[" << LABEL << "][vm" << _vm_id
-                      << "] FAIL supressoes=" << supp << " < " << NEEDED_SUPP << std::endl;
+                      << "] FAIL reissues=" << r << " < " << NEEDED_REISSUES << std::endl;
             std::exit(1);
         }
 
@@ -94,7 +98,7 @@ int main() {
     const int vm_id = detect_vm_id();
     if (vm_id == RSU_VM_ID) { RSU rsu; rsu.initialize(); rsu.run(); return 0; }
     Vehicle vehicle(false);
-    vehicle.add_component(new Moving_Subscriber(vm_id), Component_Ports::TEST_INTEREST_SUB);
+    vehicle.add_component(new Reactive_Subscriber(vm_id), Component_Ports::TEST_INTEREST_SUB);
     vehicle.initialize();
     vehicle.run();
     return 0;
