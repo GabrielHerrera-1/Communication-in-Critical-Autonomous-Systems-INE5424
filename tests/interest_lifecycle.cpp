@@ -1,6 +1,6 @@
-// Etapa 5 -- Ciclo de vida: interesse -> respostas -> DESINTERESSE -> parada.
-// vm1 RSU; vm2 subscriber coleta e cancela; vm3 publisher para ao receber o
-// desinteresse (prova que a parada e dirigida pela mensagem).
+// Etapa 5 -- Teste 4: entrada e saida dinamica.
+// A RSU repete interesses. Um consumidor sai, outro continua; produtores tardios
+// entram depois e precisam responder sem reiniciar a simulacao.
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -9,104 +9,156 @@
 #include "../src/communication/smart_data/smart_data.h"
 #include "../src/communication/smart_data/data_types.h"
 #include "../src/core/clock.h"
+#include "interest_test_utils.h"
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <map>
 #include <iostream>
 #include <unistd.h>
 
 namespace {
 
-const int      VM_COUNT          = 3;
-const int      RSU_VM_ID         = 1;
-const int      SUBSCRIBER_VM_ID  = 2;
-const uint64_t PERIOD_US         = 250'000;
-const uint64_t COLLECT_BEFORE_UNSUB = 8;
-const int      STARTUP_DELAY_S   = 5;
-const int      FORWARD_GRACE_S   = 3;
-const int64_t  DEADLINE_NS       = 90LL * 1000000000LL;
-
 const char LABEL[] = "interest-lifecycle";
+const int VM_COUNT = 7;
+const int RSU_VM_ID = 1;
+const int CONSUMER_A_VM = 2;
+const int CONSUMER_B_VM = 3;
+const int FIRST_LATE_PRODUCER_VM = 6;
+const uint64_t PERIOD_US = 300'000;
+const int EARLY_START_S = 5;
+const int CONSUMER_B_START_S = 12;
+const int CONSUMER_A_UNSUB_S = 18;
+const int LATE_PRODUCER_START_S = 22;
+const std::size_t EXPECTED_TOTAL_PRODUCERS = 4;
+const int64_t DEADLINE_NS = 90LL * 1000000000LL;
 
-int detect_vm_id() {
-    FILE * cmdline = std::fopen("/proc/cmdline", "r");
-    if (!cmdline) { std::cerr << "[" << LABEL << "] sem /proc/cmdline" << std::endl; std::exit(1); }
-    char line[4096];
-    if (!std::fgets(line, sizeof(line), cmdline)) {
-        std::fclose(cmdline);
-        std::cerr << "[" << LABEL << "] falha lendo /proc/cmdline" << std::endl; std::exit(1);
-    }
-    std::fclose(cmdline);
-    for (char * tok = std::strtok(line, " "); tok; tok = std::strtok(nullptr, " ")) {
-        int vm_id = 0;
-        if (std::sscanf(tok, "so2.vm_id=%d", &vm_id) == 1) {
-            if (vm_id < 1 || vm_id > VM_COUNT) {
-                std::cerr << "[" << LABEL << "] vm_id invalido: " << vm_id << std::endl; std::exit(1);
-            }
-            return vm_id;
-        }
-    }
-    std::cerr << "[" << LABEL << "] so2.vm_id ausente" << std::endl; std::exit(1);
+void sleep_until_second(int target_s, int started_s = 0) {
+    if (target_s > started_s) sleep(target_s - started_s);
 }
 
-class Publisher_Component : public Component, public IProducer<Counter_Data::Value> {
+class Dynamic_Producer : public Component, public IProducer<Counter_Data::Value> {
 public:
-    explicit Publisher_Component(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
+    Dynamic_Producer(int vm_id, int start_s)
+        : Component(LABEL), _vm_id(vm_id), _start_s(start_s) {}
+
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_PUB; }
-    Counter_Data::Value produce() override { return Counter_Data::Value{ ++_seq }; }
+    Counter_Data::Value produce() override { return Counter_Data::Value{++_seq}; }
 
     void run() override {
-        sleep(STARTUP_DELAY_S);
-        std::cout << "[" << LABEL << "][vm" << _vm_id << "] publisher pronto" << std::endl;
+        sleep(_start_s);
+        std::cout << "[" << LABEL << "][vm" << _vm_id
+                  << "] produtor entrou em t~" << _start_s << "s" << std::endl;
 
-        SmartData<Counter_Data> producer(_communicator, this);
-        const int vm_id = _vm_id;
-        SmartData<Counter_Data> * p = &producer;
-        producer.on_disinterest_received([vm_id, p](Unit) {
-            std::cout << "[" << LABEL << "][vm" << vm_id
-                      << "] DESINTERESSE recebido apos respostas_enviadas="
-                      << p->responses_sent() << " -- parando" << std::endl;
-            std::cout << "[" << LABEL << "][vm" << vm_id << "] cenario validado." << std::endl;
+        SmartData<Counter_Data> data(_communicator, this);
+        data.on_response_sent([this](uint64_t n) {
+            if (n == 1) {
+                std::cout << "[" << LABEL << "][vm" << _vm_id
+                          << "] cenario validado." << std::endl;
+            }
         });
         while (true) pause();
     }
 
 private:
     int _vm_id;
+    int _start_s;
     uint64_t _seq = 0;
 };
 
-class Subscriber_Component : public Component {
+class Leaving_Consumer : public Component {
 public:
-    explicit Subscriber_Component(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
+    explicit Leaving_Consumer(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
     void initialize() override {}
     Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB; }
 
     void run() override {
-        sleep(STARTUP_DELAY_S);
-        std::cout << "[" << LABEL << "][vm" << _vm_id << "] subscriber pronto" << std::endl;
-
-        SmartData<Counter_Data> consumer(_communicator, PERIOD_US);
+        sleep(EARLY_START_S);
+        SmartData<Counter_Data> data(_communicator, PERIOD_US, /*auto_refresh=*/false);
 
         const int64_t deadline = Clock::now_ns() + DEADLINE_NS;
-        while (consumer.response_count() < COLLECT_BEFORE_UNSUB && Clock::now_ns() < deadline) {
-            Message * m = consumer.receive_response(2000);
-            if (m) delete m;
+        while (data.response_count() < 4 && Clock::now_ns() < deadline) {
+            Message * m = data.receive_response(2000);
+            if (m) {
+                if (!decode_response<Counter_Data>(m)) {
+                    std::cerr << "[" << LABEL << "][vm" << _vm_id
+                              << "] FAIL tipo inesperado antes do desinteresse" << std::endl;
+                    delete m;
+                    std::exit(1);
+                }
+                delete m;
+            }
+        }
+
+        sleep_until_second(CONSUMER_A_UNSUB_S, EARLY_START_S);
+        data.unsubscribe();
+
+        std::cout << "[" << LABEL << "][vm" << _vm_id
+                  << "] RESUMO saiu_com_respostas=" << data.response_count()
+                  << " desinteresse=enviado" << std::endl;
+        std::cout << "[" << LABEL << "][vm" << _vm_id
+                  << "] cenario validado." << std::endl;
+    }
+
+private:
+    int _vm_id;
+};
+
+class Continuing_Consumer : public Component {
+public:
+    explicit Continuing_Consumer(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
+    void initialize() override {}
+    Port logical_port() const override { return Component_Ports::TEST_INTEREST_SUB + 1; }
+
+    void run() override {
+        sleep(CONSUMER_B_START_S);
+        SmartData<Counter_Data> data(_communicator, PERIOD_US);
+
+        // Fase 1: coleta ate ver todos os produtores (fan-in).
+        std::map<uint64_t, int> by_producer;
+        const int64_t deadline = Clock::now_ns() + DEADLINE_NS;
+        while (Clock::now_ns() < deadline) {
+            Message * m = data.receive_response(3000);
+            if (!m) continue;
+            if (!decode_response<Counter_Data>(m)) {
+                std::cerr << "[" << LABEL << "][vm" << _vm_id
+                          << "] FAIL tipo inesperado" << std::endl;
+                delete m; std::exit(1);
+            }
+            by_producer[endpoint_key(m->address())]++;
+            delete m;
+            bool enough = by_producer.size() >= EXPECTED_TOTAL_PRODUCERS;
+            for (const auto & kv : by_producer) enough = enough && kv.second >= 2;
+            if (enough) break;
+        }
+
+        if (by_producer.size() < EXPECTED_TOTAL_PRODUCERS) {
+            std::cerr << "[" << LABEL << "][vm" << _vm_id
+                      << "] FAIL viu apenas " << by_producer.size() << "/"
+                      << EXPECTED_TOTAL_PRODUCERS << " produtores" << std::endl;
+            std::exit(1);
+        }
+
+        // Fase 2: PER-ADDRESS. Espera A (vm2) mandar desinteresse (em ~CONSUMER_A_UNSUB_S)
+        // e confirma que B CONTINUA sendo atendido depois -- ou seja, o desinteresse
+        // de A nao derrubou o interesse de B (bindings sao por endereco).
+        sleep_until_second(CONSUMER_A_UNSUB_S + 6, CONSUMER_B_START_S);
+        const uint64_t before = data.response_count();
+        const int64_t end = Clock::now_ns() + 8LL * 1000000000LL;
+        while (Clock::now_ns() < end) { Message * m = data.receive_response(1000); if (m) delete m; }
+        const uint64_t after = data.response_count();
+
+        std::cout << "[" << LABEL << "][vm" << _vm_id
+                  << "] RESUMO produtores=" << by_producer.size()
+                  << " respostas_antes_pos_saida_A=" << before << " depois=" << after << std::endl;
+
+        if (after <= before) {
+            std::cerr << "[" << LABEL << "][vm" << _vm_id
+                      << "] FAIL parou de receber apos A sair -- desinteresse de A derrubou B" << std::endl;
+            std::exit(1);
         }
 
         std::cout << "[" << LABEL << "][vm" << _vm_id
-                  << "] coletei respostas=" << consumer.response_count()
-                  << " -- enviando DESINTERESSE (saindo)" << std::endl;
-        consumer.unsubscribe();
-
-        sleep(FORWARD_GRACE_S); // mantem o gateway vivo p/ encaminhar o desinteresse
-
-        std::cout << "[" << LABEL << "][vm" << _vm_id
-                  << "] RESUMO respostas=" << consumer.response_count()
-                  << " desinteresse=enviado" << std::endl;
-        std::cout << "[" << LABEL << "][vm" << _vm_id << "] cenario validado." << std::endl;
+                  << "] cenario validado." << std::endl;
     }
 
 private:
@@ -116,13 +168,28 @@ private:
 } // namespace
 
 int main() {
-    const int vm_id = detect_vm_id();
-    if (vm_id == RSU_VM_ID) { RSU rsu; rsu.initialize(); rsu.run(); return 0; }
+    const int vm_id = detect_vm_id(LABEL, VM_COUNT);
+    if (vm_id == RSU_VM_ID) {
+        RSU rsu;
+        rsu.initialize();
+        rsu.run();
+        return 0;
+    }
+
     Vehicle vehicle(false);
-    if (vm_id == SUBSCRIBER_VM_ID)
-        vehicle.add_component(new Subscriber_Component(vm_id), Component_Ports::TEST_INTEREST_SUB);
-    else
-        vehicle.add_component(new Publisher_Component(vm_id), Component_Ports::TEST_INTEREST_PUB);
+    if (vm_id == CONSUMER_A_VM) {
+        vehicle.add_component(new Leaving_Consumer(vm_id), Component_Ports::TEST_INTEREST_SUB);
+    } else if (vm_id == CONSUMER_B_VM) {
+        vehicle.add_component(new Continuing_Consumer(vm_id), Component_Ports::TEST_INTEREST_SUB + 1);
+    } else {
+        // Todos os produtores entram cedo: o foco deste teste e o per-address
+        // (A manda desinteresse, B continua sendo atendido). O cenario de late
+        // joiner via reanuncio da RSU fica no interest-rsu-repeat (la o subscriber
+        // esta faminto -> reativo -> reenvia -> a RSU mantem o interesse vivo).
+        (void) FIRST_LATE_PRODUCER_VM; (void) LATE_PRODUCER_START_S;
+        vehicle.add_component(new Dynamic_Producer(vm_id, EARLY_START_S), Component_Ports::TEST_INTEREST_PUB);
+    }
+
     vehicle.initialize();
     vehicle.run();
     return 0;
