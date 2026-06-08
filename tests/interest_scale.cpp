@@ -4,11 +4,11 @@
 //   vm5..vm24 = 20 veiculos que andam LIVREMENTE pelos quadrantes (random-walk).
 //
 // Cada veiculo tem 5 COMPONENTES (como um veiculo autonomo real): 4 sensores
-// produtores (Speed, Lidar, Radar, Counter) + 1 consumidor-controlador. Dois
-// tipos sao ativamente consumidos pela frota (variedade: Speed e Counter,
-// rotacionados entre os consumidores); Lidar/Radar ficam a bordo, prontos, sem
-// assinante neste cenario. Conforme a frota se move, o filtro espacial da NIC so
-// entrega quadros entre VMs co-localizadas -> cada consumidor:
+// produtores (Speed, Lidar, Radar, Counter) + 1 consumidor-controlador. Os QUATRO
+// tipos sao ativamente consumidos pela frota (variedade plena: o consumidor de
+// cada veiculo rotaciona entre Speed/Lidar/Radar/Counter), entao TODOS os 5
+// componentes de cada veiculo participam. Conforme a frota se move, o filtro
+// espacial da NIC so entrega quadros entre VMs co-localizadas -> cada consumidor:
 //   (a) so recebe respostas do SEU tipo (demux por Unit em trafego misto);
 //   (b) agrega produtores DISTINTOS ao reencontra-los pelos quadrantes;
 //   (c) ao se separar, reanuncia (re-carimbado com o quadrante novo).
@@ -36,10 +36,12 @@ namespace {
 const char LABEL[]          = "interest-scale";
 const int  VM_COUNT         = 24;            // vm1..4 RSUs + vm5..24 (20 veiculos)
 const int  FIRST_VEHICLE_VM = 5;
-const uint64_t PERIOD_US    = 600'000;       // 5 comp/VM (~120 processos): periodo folgado
+// 5 comp/VM e 4 tipos ATIVOS (~120 processos) -> periodo longo segura a taxa
+// total de frames (todo componente processa cada frame do seu quadrante).
+const uint64_t PERIOD_US    = 1'200'000;
 const std::size_t NEED_DISTINCT = 2;         // co-localizou com >= 2 produtores do seu tipo
 const uint64_t    NEED_REISSUES = 2;         // reanunciou >= 2 vezes (mobilidade)
-const int64_t DEADLINE_NS   = 260LL * 1000000000LL;
+const int64_t DEADLINE_NS   = 280LL * 1000000000LL;
 
 using Port = Component_Ports::Port;
 const Port PORT_SPEED   = 0xF503;
