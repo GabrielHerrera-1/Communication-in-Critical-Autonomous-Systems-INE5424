@@ -7,7 +7,7 @@
 #include "../../core/observers/concurrent_observer.h"
 #include "../message/message.h"
 
-// Helpers compartilhados entre SmartData e Interest_Tracker (evita duplicacao).
+// helpers compartilhados entre SmartData e Interest_Tracker 
 
 // chave de 64 bits a partir do MAC (6 bytes) -- identidade do veiculo
 inline uint64_t mac_key(const Vehicle_Protocol::Address & a) {

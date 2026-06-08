@@ -14,9 +14,9 @@
 #include <unistd.h>
 
 namespace {
-// Le so2.rsu_repeat_us=<us> do /proc/cmdline (a VM nao herda env do host; a
+// Le so2.rsu_repeat_us=<us> do /proc/cmdline (a VM nao herda env do host, a
 // configuracao chega pela linha de comando do kernel, como so2.vm_id). 0 =
-// rastreamento passivo desligado.
+// rastreamento passivo desligado
 uint64_t read_rsu_repeat_us() {
     FILE * f = std::fopen("/proc/cmdline", "r");
     if (!f) return 0;
@@ -45,7 +45,7 @@ int RSU::run_gateway_process() {
 
     // SHM com 0 componentes: so o slot do gateway fica registrado. A infra
     // ainda e necessaria porque o Protocol sempre instancia um SHM NIC
-    // (mesmo sem trafego interno, e mais simples que ter duas variantes).
+    // (mesmo sem trafego interno, e mais simples que ter duas variantes)
     SharedMemoryEngine::Context context = _gateway.create_context(nullptr, 0);
     if (context.shmid < 0 || context.semid < 0) {
         std::cerr << "[RSU] nao foi possivel criar SHM." << std::endl;

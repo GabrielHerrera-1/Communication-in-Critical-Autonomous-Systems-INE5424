@@ -1,7 +1,7 @@
 #ifndef IPRODUCER_H
 #define IPRODUCER_H
 
-// Interface de produtor de dados, implementada pelos COMPONENTES.
+// interface de produtor de dados, implementada pelos COMPONENTES
 template <typename Value>
 class IProducer {
 public:

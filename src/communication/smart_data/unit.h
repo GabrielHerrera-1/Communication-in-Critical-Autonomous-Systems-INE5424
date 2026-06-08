@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-// Unit: o "type" das mensagens de Interesse e Resposta (spec da etapa 5).
+// Unit: o "type" das mensagens de Interesse e Resposta (spec da etapa 5)
 // Identifica inequivocamente o tipo do dado
 enum class Unit : uint32_t {
     NONE            = 0x00000000,

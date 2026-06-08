@@ -52,8 +52,8 @@ public:
                                message->timestamp()) > 0);
     }
 
-    // receive() legado: drena a fila de buffers do Concurrent_Observer. So e
-    // usado por componentes SEM SmartData anexado (ver update()).
+    // receive() legado: drena a fila de buffers do Concurrent_Observer. so e
+    // usado por componentes sem SmartData anexado (ver update())
     template <typename Payload>
     bool receive(TypedMessage<Payload> * message) {
         Buffer * buf = ChannelObserver::updated();
@@ -72,7 +72,7 @@ public:
     }
 
 protected:
-    // Ctor por Port: deriva o Address via create_address(port).
+    // Ctor por Port: deriva o Address via create_address(port)
     Communicator(Channel * channel, typename Channel::Port port, bool subscribe_broadcast = true)
         : ChannelObserver(),
           _channel(channel),
@@ -85,9 +85,9 @@ protected:
         }
     }
 
-    // Notificacao do canal. Se ha SmartData observando esta condicao, faz o
-    // unmarshal do buffer numa Message inteira e a notifica; senao, empilha o
-    // buffer para o receive() legado.
+    // notificacao do canal. se ha SmartData observando esta condicao, faz o
+    // unmarshal do buffer numa Message inteira e a notifica, senao, empilha o
+    // buffer para o receive() legado
     void update(Condition c, Buffer * buf) override {
         if (MessageObserved::has_observer(c)) {
             Message * m = new Message();

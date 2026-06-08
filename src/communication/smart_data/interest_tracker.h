@@ -20,7 +20,7 @@
 #include "unit.h"
 
 // Broker de interesse na RSU (rastreamento passivo). E um Concurrent_Observer
-// <Message> que OBSERVA o Communicator do gateway
+// <Message> que observa o Communicator do gateway
 class Interest_Tracker : public Concurrent_Observer<Message, Vehicle_Protocol::Port> {
 public:
     using Base = Concurrent_Observer<Message, Vehicle_Protocol::Port>;
@@ -91,7 +91,7 @@ private:
     };
 
     // Tick do broker:
-    // purga veiculos cujo lease de presenca expirou e seus interesses
+    // tira veiculos cujo lease de presenca expirou e seus interesses
     // reanuncia os interesses ativos
     // manda desinteresse para as Units que ficaram sem ninguem desde o tick anterior (por presenca ou por desinteresse explicito)
     void broker_tick() {
@@ -101,7 +101,7 @@ private:
         {
             std::lock_guard<std::mutex> lock(_mtx);
 
-            // purga veiculos ausentes + seus interesses
+            // tira veiculos ausentes + seus interesses
             std::vector<uint64_t> dead;
             for (const auto & kv : _presence)
                 if (now - kv.second > PRESENCE_LEASE_NS) dead.push_back(kv.first);

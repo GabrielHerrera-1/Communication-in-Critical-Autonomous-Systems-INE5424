@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "unit.h"
 
-// Estruturas que viajam DENTRO do payload (data()) de uma TypedMessage.
+// estruturas que viajam dentro do payload (data()) de uma TypedMessage
 
 struct SmartHeader {
     enum Kind : uint8_t { INTEREST = 0, RESPONSE = 1 };

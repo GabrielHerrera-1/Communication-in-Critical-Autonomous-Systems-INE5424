@@ -25,7 +25,7 @@
 #include "smart_helpers.h"
 
 struct Smart_Config {
-    static constexpr uint64_t INTEREST_REFRESH_US     = 1'000'000; // Refresh REATIVO 1s de silencio -> reenvia
+    static constexpr uint64_t INTEREST_REFRESH_US     = 1'000'000; // Refresh reativo 1s de silencio -> reenvia
     static constexpr uint64_t BINDING_LIFETIME_MIN_US = 3'500'000; // binding expira apos 3.5s sem refresh
     static constexpr unsigned BINDING_LIFETIME_FACTOR = 4;
     static constexpr uint64_t REAPER_PERIOD_US        = 1'000'000;
@@ -45,7 +45,7 @@ public:
 
     enum Role { PRODUCER, CONSUMER };
 
-    // PRODUTOR
+    // produtor
     SmartData(Comm * comm, IProducer<Value> * producer)
         : _comm(comm), _role(PRODUCER), _producer(producer) {
         _cache = std::make_unique<Binding_Cache>(
@@ -56,7 +56,7 @@ public:
         _comm->attach(this, _comm->broadcast_condition()); // observa o Communicator
     }
 
-    // CONSUMIDOR
+    // consumidor
     SmartData(Comm * comm, uint64_t period_us, bool auto_refresh = true, bool value_mode = false)
         : _comm(comm), _role(CONSUMER), _period_us(period_us ? period_us : 1),
           _value_mode(value_mode) {
@@ -64,7 +64,7 @@ public:
         _last_response_ns.store(Clock::now_ns(), std::memory_order_relaxed);
         send_interest(false);
         if (auto_refresh) {
-            // Refresh REATIVO
+            // refresh reativo
             _refresh = std::make_unique<Periodic_Thread>(
                 Smart_Config::INTEREST_REFRESH_US, [this] { reactive_tick(); });
         } else {
@@ -121,7 +121,7 @@ public:
                 }
             }
             if (_value_mode) delete m;       // so o ultimo valor importa -> nao enfileira
-            else Base::update(c, m);         // modo fila: ENFILEIRA a Message inteira (app drena)
+            else Base::update(c, m);         // modo fila: enfileira a Message inteira (app drena)
         } else {
             delete m;
         }
@@ -136,7 +136,7 @@ public:
     // operator Value(): trata o SmartData como o proprio dado
     operator Value() const { return value(); }
 
-    // true se nunca recebeu OU se ja passou VALUE_TTL_FACTOR periodos sem atualizar
+    // true se nunca recebeu ou se ja passou VALUE_TTL_FACTOR periodos sem atualizar
     bool expired() const {
         std::lock_guard<std::mutex> l(_mtx);
         if (!_has_value) return true;
@@ -162,7 +162,7 @@ public:
         }
     }
 
-    // saida ABRUPTA: para de reanunciar e NAO envia desinteresse (simula um veiculo que some/cai)
+    // saida abrupta: para de reanunciar e nao envia desinteresse (simula um veiculo que some/cai)
     void abandon() {
         if (_role != CONSUMER) return;
         if (_refresh) _refresh->stop();
@@ -184,7 +184,7 @@ private:
         ResponseMessage<Value> r;
         r.header.kind = SmartHeader::RESPONSE;
         r.header.unit = UNIT;
-        r.value = _producer->produce(); // o COMPONENTE gera o dado
+        r.value = _producer->produce(); // o componente gera o dado
         TypedMessage<ResponseMessage<Value>> msg(r);
         _comm->send(&msg);
         uint64_t n = _responses_sent.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -201,7 +201,7 @@ private:
         _comm->send(&msg);
     }
 
-    // Refresh REATIVO: reenvia o interesse SO se passou INTEREST_REFRESH_US sem receber respostas
+    // Refresh reativo: reenvia o interesse so se passou INTEREST_REFRESH_US sem receber respostas
     void reactive_tick() {
         int64_t last = _last_response_ns.load(std::memory_order_relaxed);
         if (Clock::now_ns() - last >= static_cast<int64_t>(Smart_Config::INTEREST_REFRESH_US) * 1000) {
