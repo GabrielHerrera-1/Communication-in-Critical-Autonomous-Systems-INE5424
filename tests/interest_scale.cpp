@@ -141,12 +141,22 @@ int main() {
     vehicle.add_component(new Fleet_Producer<Radar_Data>(vm_id, PORT_RADAR), PORT_RADAR);
     vehicle.add_component(new Fleet_Producer<Counter_Data>(vm_id, PORT_COUNTER), PORT_COUNTER);
 
-    // 5o componente: o consumidor-controlador. Rotaciona entre os 2 tipos ativos
-    // (variedade): metade consome Speed, metade Counter.
-    if (offset % 2 == 0)
+
+    switch (offset % 4)
+    {
+    case 0:
         vehicle.add_component(new Fleet_Consumer<Speed_Data>(vm_id), PORT_SUB);
-    else
+        break;
+    case 1:
+        vehicle.add_component(new Fleet_Consumer<Lidar_Data>(vm_id), PORT_SUB);
+        break;
+    case 2:
+        vehicle.add_component(new Fleet_Consumer<Radar_Data>(vm_id), PORT_SUB);
+        break;
+    case 3:
         vehicle.add_component(new Fleet_Consumer<Counter_Data>(vm_id), PORT_SUB);
+        break;
+    }
 
     vehicle.initialize();
     vehicle.run();
