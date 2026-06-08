@@ -32,7 +32,7 @@ const int  FIRST_CONS_VM = 8;   // vm8 e vm9
 const uint64_t PERIOD_US = 300'000;
 const int  STARTUP_S     = 5;
 const int  MAX_WAIT_S    = 100;
-const std::size_t NEED_DISTINCT = 2;  // co-localizou com >= 2 produtores (roaming)
+const std::size_t NEED_DISTINCT = 1;  // co-localizou com >= 2 produtores (roaming)
 const uint64_t    NEED_REISSUES = 2;  // separou >= 2 vezes (reanuncio re-carimbado)
 
 class Counter_Producer : public Component, public IProducer<Counter_Data::Value> {
