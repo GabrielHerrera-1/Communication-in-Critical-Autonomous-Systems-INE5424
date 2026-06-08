@@ -1,5 +1,5 @@
-// Etapa 5 -- Teste 3: varios tipos ao mesmo tempo.
-// Consumidores de SPEED, LIDAR, RADAR e TEST_COUNTER recebem apenas sua Unit.
+// etapa 5: varios tipos ao mesmo tempo.
+// consumidores de SPEED, LIDAR, RADAR e TEST_COUNTER recebem apenas sua Unit
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"

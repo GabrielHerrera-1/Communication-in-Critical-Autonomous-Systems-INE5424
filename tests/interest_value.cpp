@@ -1,6 +1,6 @@
-// Etapa 5 -- modo-valor do SmartData: o consumidor le o dado como uma VARIAVEL
+// etapa 5 -- modo-valor do SmartData: o consumidor le o dado como uma variavel
 // viva (value()/operator Value() + fresh()/expired()), sem drenar fila.
-// vm1 RSU broker; vm2 produtor (contador); vm3 consumidor em modo-valor.
+// vm1 RSU broker, vm2 produtor (contador), vm3 consumidor em modo-valor
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"

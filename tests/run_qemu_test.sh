@@ -108,6 +108,13 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+# Respiro entre testes: encerra QEMUs remanescentes de um teste anterior e deixa o
+# host assentar antes de subir as proximas VMs. A suite roda os testes em sequencia
+# e os cenarios pesados (period 22 VMs, scale/mobility WITH_GPS) deixam o host
+# carregado; sem este respiro, o teste seguinte pode subir num host ainda saturado.
+pkill -x "$(basename "$QEMU_BIN")" >/dev/null 2>&1 || true
+sleep 3
+
 log_matches_expectations() {
     logfile=$1
 

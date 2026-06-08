@@ -1,11 +1,10 @@
-// Etapa 5 (Parte B) -- "Mandar parar" por PRESENCA (PTP).
+// etapa 5 (Parte B) -- "mandar parar" por PRESENCA (PTP)
 //
-// vm1 RSU broker; vm2 produtor; vm3 consumidor que ABANDONA (sai sem mandar
-// desinteresse, simulando crash/saida abrupta). Como o consumidor nao envia
-// desinteresse, o UNICO jeito de o produtor parar e a RSU detectar a saida por
+// vm1 RSU broker, vm2 produtor, vm3 consumidor que abandona (sai sem mandar
+// desinteresse, simulando crash/saida abrupta). como o consumidor nao envia
+// desinteresse, o unico jeito de o produtor parar e a RSU detectar a saida por
 // PRESENCA (ausencia de REQUEST_SYNC -> lease expira) e encaminhar o
-// desinteresse. Logo: se o produtor receber um desinteresse, foi a RSU.
-// Precisa de so2.rsu_repeat_us (broker ativo).
+// desinteresse. logo: se o produtor receber um desinteresse, foi a RSU
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -56,8 +55,8 @@ int detect_vm_id() {
     std::cerr << "[" << LABEL << "] so2.vm_id ausente" << std::endl; std::exit(1);
 }
 
-// Produtor: responde enquanto ha interesse. So pode receber desinteresse da RSU
-// (o consumidor abandona em silencio), entao o desinteresse PROVA o broker.
+// produtor: responde enquanto ha interesse. so pode receber desinteresse da RSU
+// (o consumidor abandona em silencio), entao o desinteresse prova o broker
 class Producer : public Component, public IProducer<Counter_Data::Value> {
 public:
     explicit Producer(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
@@ -90,9 +89,9 @@ private:
     uint64_t _seq = 0;
 };
 
-// Consumidor: assina, coleta algumas respostas e ABANDONA (sai sem desinteresse).
-// Ao retornar de run(), o processo do componente sai e a VM para de sincronizar
-// -> a RSU detecta a ausencia por presenca.
+// consumidor: assina, coleta algumas respostas e abandona (sai sem desinteresse)
+// ao retornar de run(), o processo do componente sai e a VM para de sincronizar
+// -> a RSU detecta a ausencia por presenca
 class Departing_Consumer : public Component {
 public:
     explicit Departing_Consumer(int vm_id) : Component(LABEL), _vm_id(vm_id) {}

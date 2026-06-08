@@ -1,5 +1,5 @@
-// Etapa 5 -- Fan-in: 1 consumidor recebe de N produtores (subscribe_broadcast default = true).
-// vm1 RSU; vm2 consumidor; vm3..vm7 produtores de TEST_COUNTER.
+// etapa 5 - fan-in: 1 consumidor recebe de N produtores (subscribe_broadcast default = true)
+// vm1 RSU, vm2 consumidor, vm3..vm7 produtores de TEST_COUNTER
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"

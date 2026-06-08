@@ -79,7 +79,7 @@ DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 .SECONDARY: $(TEST_BINS) $(OBJS)
 .NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime all test-interest test-interest-all test-interest-fanin test-interest-fanout test-interest-types test-interest-period test-interest-lifecycle test-interest-presence test-interest-rsu-repeat test-interest-mobility test-interest-scale test-interest-value
 
-# 'make' puro roda a suite da Etapa 5 (Interesse/Resposta) -- e apenas ela.
+# 'make' puro roda a suite da Etapa 5 (Interesse/Resposta) -- e apenas ela
 all: test-interest-all
 
 build:
@@ -273,12 +273,15 @@ test-interest-value: select-qemu-cpu $(INTEREST_VALUE_BIN) $(RUN_QEMU_TEST)
 	@for f in $(LOG_DIR)/interest-value/latest/logs/vm*.log; do grep -aE "RESUMO|value\.seq" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-value aprovado."
 
-# suite leve (sem escala/period/mobility -- esses sao pesados/WITH_GPS)
+# suite leve (sem escala/period/mobility -- esses sao pesados)
 test-interest: test-interest-fanin test-interest-fanout test-interest-types test-interest-lifecycle test-interest-presence test-interest-rsu-repeat test-interest-value
 	@echo "[test] suite interest (leve) aprovada."
 
-# suite completa: os 10 cenarios
-test-interest-all: test-interest-fanin test-interest-fanout test-interest-types test-interest-period test-interest-lifecycle test-interest-presence test-interest-rsu-repeat test-interest-mobility test-interest-scale test-interest-value
+# suite completa: os 10 cenarios. Ordem por sensibilidade a carga: os de ciclo de
+# vida (lifecycle/presence/rsu-repeat) rodam PRIMEIRO, no host mais fresco da suite;
+# depois os leves; e os pesados (types 12 VMs, period 22 VMs, mobility/scale WITH_GPS)
+# por ultimo. O lifecycle e o mais sensivel e nao pode rodar logo apos um pesado.
+test-interest-all: test-interest-lifecycle test-interest-presence test-interest-rsu-repeat test-interest-fanin test-interest-fanout test-interest-value test-interest-types test-interest-period test-interest-mobility test-interest-scale
 	@printf '\n'
 	@printf '═══════════════════════════════════════════════════════════════════\n'
 	@printf '  \xe2\x9c\x94  Etapa 5 -- Publish-Subscribe (Interesse/Resposta)\n'

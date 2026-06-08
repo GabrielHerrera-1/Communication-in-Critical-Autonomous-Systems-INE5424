@@ -1,5 +1,5 @@
-// Etapa 5 -- Teste 2: periodicidade em escala.
-// vm1 RSU; vm2 consumidor; vm3..vm22 produtores de TEST_COUNTER.
+// etapa 5 -- teste 2: periodicidade em escala.
+// vm1 RSU, vm2 consumidor, vm3..vm22 produtores de TEST_COUNTER
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"

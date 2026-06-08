@@ -1,16 +1,14 @@
-// Etapa 5 -- Mobilidade/handover em frota movel (WITH_GPS). vm1 = RSU fixa
+// etapa 5 -- mobilidade/handover em frota movel (WITH_GPS). vm1 = RSU fixa
 // (master). vm2..vm5 = 4 produtores moveis. vm6..vm9 = 4 consumidores moveis.
-// Todas as VMs (menos a RSU) fazem random-walk pelos 4 quadrantes (gps.ko).
+// todas as VMs (menos a RSU) fazem random-walk pelos 4 quadrantes 
 //
-// O filtro espacial da NIC so entrega quadros entre VMs co-localizadas. Entao,
+// o filtro espacial da NIC so entrega quadros entre VMs no mesmo quadrante. entao,
 // conforme a frota se mexe, cada consumidor:
-//   (a) ora encontra um produtor (recebe dados), ora nao (silencio);
-//   (b) ao percorrer os quadrantes, co-localiza com produtores DIFERENTES ao longo
-//       do tempo -> agrega >= NEED_DISTINCT produtores distintos;
-//   (c) a cada separacao o dado some -> REANUNCIA (re-carimbado pela NIC com o
-//       quadrante novo) -> >= NEED_REISSUES reanuncios.
-// Sem GPS no cliente: o consumidor nao sabe o quadrante; a mobilidade e implicita.
-// TODOS os 4 consumidores precisam validar. Cobre T1/T6 em escala de frota.
+// (a) ora encontra um produtor (recebe dados), ora nao (silencio)
+// (b) ao percorrer os quadrantes, co-localiza com produtores dif ao longo do tempo -> agrega >= NEED_DISTINCT produtores distintos
+// (c) a cada separacao o dado some -> REANUNCIA (re-carimbado pela NIC com o quadrante novo) -> >= NEED_REISSUES reanuncios
+// sem GPS no cliente: o consumidor nao sabe o quadrante, a mobilidade e implicita
+// todos os 4 consumidores precisam validar
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"

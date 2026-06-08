@@ -1,22 +1,22 @@
-// Etapa 5 -- Escala em FROTA MOVEL com veiculos MULTI-COMPONENTE (WITH_GPS).
-//   vm1..vm4 = 4 RSUs, cada uma FIXA num quadrante (0..3) -- broker do seu
-//             quadrante (rastreamento passivo + reanuncio local).
-//   vm5..vm24 = 20 veiculos que andam LIVREMENTE pelos quadrantes (random-walk).
+// etapa 5 -- escala em frota movel com veiculos multi componente
+//   vm1..vm4 = 4 RSUs, cada uma fixa num quadrante (0..3) -- broker do seu
+//             quadrante (rastreamento passivo + reanuncio local)
+//   vm5..vm24 = 20 veiculos que andam livremente pelos quadrantes (random-walk)
 //
-// Cada veiculo tem 5 COMPONENTES (como um veiculo autonomo real): 4 sensores
-// produtores (Speed, Lidar, Radar, Counter) + 1 consumidor-controlador. Os QUATRO
+// cada veiculo tem 5 componentes (como um veiculo autonomo real): 4 sensores
+// produtores (Speed, Lidar, Radar, Counter) + 1 consumidor-controlador. os quatro
 // tipos sao ativamente consumidos pela frota (variedade plena: o consumidor de
-// cada veiculo rotaciona entre Speed/Lidar/Radar/Counter), entao TODOS os 5
-// componentes de cada veiculo participam. Conforme a frota se move, o filtro
+// cada veiculo rotaciona entre Speed/Lidar/Radar/Counter), entao todos os 5
+// componentes de cada veiculo participam. conforme a frota se move, o filtro
 // espacial da NIC so entrega quadros entre VMs co-localizadas -> cada consumidor:
-//   (a) so recebe respostas do SEU tipo (demux por Unit em trafego misto);
-//   (b) agrega produtores DISTINTOS ao reencontra-los pelos quadrantes;
-//   (c) ao se separar, reanuncia (re-carimbado com o quadrante novo).
+//   (a) so recebe respostas do seu tipo (demux por Unit em trafego misto)
+//   (b) agrega produtores distintos ao reencontra-los pelos quadrantes
+//   (c) ao se separar, reanuncia (re-carimbado com o quadrante novo)
 //
-// Prova de uma vez: broker por quadrante (4 RSUs) + filtro espacial + mobilidade
-// + demux por tipo + veiculos multi-componente, em escala. Cada VM e validada pelo
-// SEU consumidor (os produtores ficam em silencio, para nao mascarar). O consumidor
-// retorna apos validar, liberando CPU para os retardatarios.
+// prova de uma vez: broker por quadrante (4 RSUs) + filtro espacial + mobilidade
+// + demux por tipo + veiculos multi-componente, em escala. cada VM e validada pelo
+// seu consumidor (os produtores ficam em silencio, para nao mascarar). O consumidor
+// retorna apos validar, liberando CPU
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -36,7 +36,7 @@ namespace {
 const char LABEL[]          = "interest-scale";
 const int  VM_COUNT         = 24;            // vm1..4 RSUs + vm5..24 (20 veiculos)
 const int  FIRST_VEHICLE_VM = 5;
-// 5 comp/VM e 4 tipos ATIVOS (~120 processos) -> periodo longo segura a taxa
+// 5 comp/VM e 4 tipos ativos (~120 processos) -> periodo longo segura a taxa
 // total de frames (todo componente processa cada frame do seu quadrante).
 const uint64_t PERIOD_US    = 1'200'000;
 const std::size_t NEED_DISTINCT = 2;         // co-localizou com >= 2 produtores do seu tipo
@@ -50,7 +50,7 @@ const Port PORT_RADAR   = 0xF505;
 const Port PORT_COUNTER = Component_Ports::TEST_INTEREST_PUB;  // 0xF501
 const Port PORT_SUB     = Component_Ports::TEST_INTEREST_SUB;  // 0xF502
 
-// Sensor-produtor (serve em silencio; quem valida a VM e o consumidor dela).
+// sensor-produtor (serve em silencio, quem valida a VM e o consumidor dela)
 template <typename Data>
 class Fleet_Producer : public Component, public IProducer<typename Data::Value> {
 public:
@@ -67,8 +67,8 @@ private:
     int _vm_id; Port _port;
 };
 
-// Consumidor-controlador movel: agrega produtores do seu tipo ao percorrer os
-// quadrantes. Valida e RETORNA (libera CPU para os retardatarios).
+// consumidor-controlador movel: agrega produtores do seu tipo ao percorrer os
+// quadrantes. 
 template <typename Data>
 class Fleet_Consumer : public Component {
 public:
@@ -116,7 +116,7 @@ public:
             std::exit(1);
         }
         std::cout << "[" << LABEL << "][vm" << _vm_id << "] cenario validado." << std::endl;
-        // retorna: o consumidor sai e libera CPU; os 4 sensores da VM seguem no ar.
+        // retorna: o consumidor sai e libera CPU, os 4 sensores da VM seguem no ar
     }
 private:
     int _vm_id;
@@ -127,7 +127,7 @@ private:
 int main() {
     const int vm_id = detect_vm_id(LABEL, VM_COUNT);
 
-    // vm1..4 = RSUs (o harness ancora cada uma num quadrante; is_master congela).
+    // vm1..4 = RSUs (o harness ancora cada uma num quadrante; is_master congela)
     if (vm_id < FIRST_VEHICLE_VM) {
         RSU rsu; rsu.initialize(); rsu.run();
         return 0;
@@ -136,8 +136,8 @@ int main() {
     const int offset = vm_id - FIRST_VEHICLE_VM;   // 0..19
     Vehicle vehicle(false);
 
-    // 4 sensores-produtores em TODO veiculo (Speed e Counter sao consumidos pela
-    // frota; Lidar e Radar ficam a bordo, prontos, sem assinante neste cenario).
+    // 4 sensores-produtores em todo veiculo (Speed e Counter sao consumidos pela
+    // frota, Lidar e Radar ficam a bordo, prontos, sem assinante neste cenario)
     vehicle.add_component(new Fleet_Producer<Speed_Data>(vm_id, PORT_SPEED), PORT_SPEED);
     vehicle.add_component(new Fleet_Producer<Lidar_Data>(vm_id, PORT_LIDAR), PORT_LIDAR);
     vehicle.add_component(new Fleet_Producer<Radar_Data>(vm_id, PORT_RADAR), PORT_RADAR);

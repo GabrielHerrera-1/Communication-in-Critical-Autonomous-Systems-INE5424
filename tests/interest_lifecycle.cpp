@@ -1,6 +1,6 @@
-// Etapa 5 -- Teste 4: entrada e saida dinamica.
-// A RSU repete interesses. Um consumidor sai, outro continua; produtores tardios
-// entram depois e precisam responder sem reiniciar a simulacao.
+// etapa 5 -- Teste 4: entrada e saida dinamica
+// a RSU repete interesses. um consumidor sai, outro continua, produtores tardios
+// entram depois e precisam responder sem reiniciar a simulacao
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -25,7 +25,7 @@ const int CONSUMER_B_VM = 3;
 const int FIRST_LATE_PRODUCER_VM = 6;
 const uint64_t PERIOD_US = 300'000;
 const int EARLY_START_S = 5;
-const int CONSUMER_B_START_S = 12;
+const int CONSUMER_B_START_S = 6;
 const int CONSUMER_A_UNSUB_S = 18;
 const int LATE_PRODUCER_START_S = 22;
 const std::size_t EXPECTED_TOTAL_PRODUCERS = 4;
@@ -138,9 +138,9 @@ public:
             std::exit(1);
         }
 
-        // Fase 2: PER-ADDRESS. Espera A (vm2) mandar desinteresse (em ~CONSUMER_A_UNSUB_S)
+        // fase 2: PER-ADDRESS. espera A (vm2) mandar desinteresse (em ~CONSUMER_A_UNSUB_S)
         // e confirma que B CONTINUA sendo atendido depois -- ou seja, o desinteresse
-        // de A nao derrubou o interesse de B (bindings sao por endereco).
+        // de A nao derrubou o interesse de B (bindings sao por endereco)
         sleep_until_second(CONSUMER_A_UNSUB_S + 6, CONSUMER_B_START_S);
         const uint64_t before = data.response_count();
         const int64_t end = Clock::now_ns() + 8LL * 1000000000LL;
@@ -182,10 +182,9 @@ int main() {
     } else if (vm_id == CONSUMER_B_VM) {
         vehicle.add_component(new Continuing_Consumer(vm_id), Component_Ports::TEST_INTEREST_SUB + 1);
     } else {
-        // Todos os produtores entram cedo: o foco deste teste e o per-address
-        // (A manda desinteresse, B continua sendo atendido). O cenario de late
-        // joiner via reanuncio da RSU fica no interest-rsu-repeat (la o subscriber
-        // esta faminto -> reativo -> reenvia -> a RSU mantem o interesse vivo).
+        // todos os produtores entram cedo: o foco deste teste e o per-address
+        // (A manda desinteresse, B continua sendo atendido). o cenario de late
+        // joiner via reanuncio da RSU fica no interest-rsu-repeat
         (void) FIRST_LATE_PRODUCER_VM; (void) LATE_PRODUCER_START_S;
         vehicle.add_component(new Dynamic_Producer(vm_id, EARLY_START_S), Component_Ports::TEST_INTEREST_PUB);
     }

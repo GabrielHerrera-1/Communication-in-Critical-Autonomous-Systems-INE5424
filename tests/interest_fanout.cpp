@@ -1,8 +1,7 @@
-// Etapa 5 -- Fan-out: N consumidores <- 1 produtor, com DOIS periodos.
-// vm1 RSU; vm2 produtor; vm3,vm4 consumidores rapidos (250ms); vm5,vm6 lentos
-// (500ms). Valida: (a) broadcast 1->N (todos recebem); (b) o produtor agrega e
-// responde com UMA thread no periodo MAIS CURTO (250ms) -- nao a soma das duas
-// cadencias. Cobre T3 (fan-out) + T7 (multiplos periodos) + a nossa agregacao.
+// etapa 5 -- fan-out: N consumidores <- 1 produtor, com dois periodos
+// vm1 RSU, vm2 produtor, vm3,vm4 consumidores rapidos (250ms), vm5,vm6 lentos
+// (500ms). valida: (a) broadcast 1->N (todos recebem), (b) o produtor agrega e
+// responde com uma thread no periodo mais curto (250ms)
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -29,9 +28,9 @@ const int  WINDOW_S  = 12;             // janela de medicao do produtor
 const int  COLLECT_S = 26;             // consumidor fica assinando este tempo
 const int  MIN_CONSUMER_SAMPLES = 12;  // cada consumidor deve coletar isso
 
-// Produtor: serve todos os interesses da Unit. Mede a propria taxa de resposta
-// para provar que ha UMA thread no periodo mais curto (250ms -> ~48 em 12s),
-// e nao duas threads somando as cadencias (~72 em 12s).
+// produtor: serve todos os interesses da Unit. mede a propria taxa de resposta
+// para provar que ha uma thread no periodo mais curto (250ms -> ~48 em 12s),
+// e nao duas threads somando as cadencias (~72 em 12s)
 class Counter_Producer : public Component, public IProducer<Counter_Data::Value> {
 public:
     explicit Counter_Producer(int vm_id) : Component(LABEL), _vm_id(vm_id) {}
@@ -49,8 +48,8 @@ public:
         sleep(WINDOW_S);
         uint64_t count = producer.responses_sent() - r0;
 
-        // 1 thread  250ms em 12s ~ 48. 2 threads (250+500) ~ 72. O limite
-        // superior separa os dois casos; o inferior garante que produziu.
+        // 1 thread  250ms em 12s ~ 48. 2 threads (250+500) ~ 72. o limite
+        // superior separa os dois casos, o inferior garante que produziu
         const uint64_t one_thread = static_cast<uint64_t>(WINDOW_S) * 1000000ULL / PERIOD_FAST; // 48
         const uint64_t lo = one_thread * 6 / 10;   // ~28
         const uint64_t hi = one_thread * 13 / 10;  // ~62  (< 72 das duas threads)
@@ -86,9 +85,9 @@ public:
         sleep(STARTUP_S);
         SmartData<Counter_Data> data(_communicator, _period_us);
 
-        // Coleta por COLLECT_S: o consumidor PERMANECE assinado durante toda a
+        // coleta por COLLECT_S: o consumidor PERMANECE assinado durante toda a
         // janela de medicao do produtor (se saisse cedo, mandaria desinteresse e
-        // o produtor pararia antes de medir).
+        // o produtor pararia antes de medir)
         int got = 0;
         const int64_t end = Clock::now_ns() + static_cast<int64_t>(COLLECT_S) * 1000000000LL;
         while (Clock::now_ns() < end) {

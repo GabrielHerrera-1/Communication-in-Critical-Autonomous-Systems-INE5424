@@ -1,6 +1,6 @@
-// Etapa 5 -- Rastreamento passivo na RSU: a RSU repete os interesses ouvidos.
-// vm1 RSU-tracker; vm2 subscriber SEM auto-refresh (manda e se cala); vm3
-// publisher TARDIO. So a repeticao da RSU mantem o interesse vivo para ele.
+// etapa 5 -- rastreamento passivo na RSU: a RSU repete os interesses ouvidos
+// vm1 RSU-tracker, vm2 subscriber SEM auto-refresh (manda e se cala), vm3
+// publisher tardio. so a repeticao da RSU mantem o interesse vivo para ele
 
 #include "../src/application/rsu.h"
 #include "../src/application/vehicle.h"
@@ -25,7 +25,7 @@ const int      SUBSCRIBER_VM_ID = 2;
 const uint64_t PERIOD_US        = 300'000;
 const uint64_t MIN_RESPONSES    = 3;
 const int      STARTUP_SUB_S    = 5;
-const int      STARTUP_PUB_S    = 25;  // entra DEPOIS de o subscriber se calar
+const int      STARTUP_PUB_S    = 25;  // entra depois de o subscriber se calar
 const int64_t  DEADLINE_NS      = 90LL * 1000000000LL;
 
 const char LABEL[] = "interest-rsu-repeat";
