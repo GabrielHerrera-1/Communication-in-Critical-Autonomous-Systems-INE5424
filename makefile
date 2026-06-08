@@ -77,9 +77,10 @@ DEPS := $(OBJS:.o=.d) $(TEST_BINS:=.d)
 
 .PHONY: all build lib prepare-runtime select-qemu-cpu stop-qemu clean-logs test test-basic test-mesh-concurrent test-stress test-sptp-drift test-sptp-simple test-quadrant test-interest test-interest-all test-interest-fanin test-interest-fanout test-interest-types test-interest-period test-interest-lifecycle test-interest-presence test-interest-rsu-repeat test-interest-mobility test-interest-scale test-interest-value gps-module gps-rebuild measure-rtt measure-rtt-intra measure-rtt-10 logs clean _suite-banner
 .SECONDARY: $(TEST_BINS) $(OBJS)
-.NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime
+.NOTPARALLEL: test test-basic test-mesh-concurrent measure-rtt measure-rtt-intra measure-rtt-10 select-qemu-cpu prepare-runtime all test-interest test-interest-all test-interest-fanin test-interest-fanout test-interest-types test-interest-period test-interest-lifecycle test-interest-presence test-interest-rsu-repeat test-interest-mobility test-interest-scale test-interest-value
 
-all: test
+# 'make' puro roda a suite da Etapa 5 (Interesse/Resposta) -- e apenas ela.
+all: test-interest-all
 
 build:
 	@$(MAKE) --no-print-directory -j$(JOBS) lib $(CORE_TEST_BINS)
@@ -201,25 +202,22 @@ test-quadrant: select-qemu-cpu $(QUADRANT_BIN) $(RUN_QEMU_TEST) gps-module
 	done
 	@printf '\n  \xe2\x9c\x94 quadrant aprovado\n'
 
-# Etapa 5: Interesse/Resposta (publish-subscribe time-triggered). Suite de 10
-# cenarios. O broker da RSU fica SEMPRE ativo (default no rsu.cpp), entao nenhum
-# teste precisa de so2.rsu_repeat_us.
 
-# T2: fan-in -- 1 consumidor recebe de N produtores
+# fan-in -- 1 consumidor recebe de N produtores
 test-interest-fanin: select-qemu-cpu $(INTEREST_FANIN_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] interest-fanin: 7 VMs (RSU + 1 consumidor + 5 produtores)..."
 	@TIMEOUT_SEC=120 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_FANIN_BIN)" 7 interest-fanin "cenario validado."
 	@for f in $(LOG_DIR)/interest-fanin/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-fanin aprovado."
 
-# T3+T7: fan-out -- N consumidores (2 periodos) <- 1 produtor (1 thread no mais curto)
+# fan-out -- N consumidores (2 periodos) <- 1 produtor (1 thread no mais curto)
 test-interest-fanout: select-qemu-cpu $(INTEREST_FANOUT_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] interest-fanout: 6 VMs (RSU + 1 produtor + 4 consumidores em 2 periodos)..."
 	@TIMEOUT_SEC=120 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_FANOUT_BIN)" 6 interest-fanout "cenario validado."
 	@for f in $(LOG_DIR)/interest-fanout/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-fanout aprovado."
 
-# T8: identidade por Unit -- consumidor so recebe o seu tipo (Speed/Lidar/Radar/Counter)
+# identidade por Unit -- consumidor so recebe o seu tipo (Speed/Lidar/Radar/Counter)
 test-interest-types: select-qemu-cpu $(INTEREST_TYPES_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] interest-types: 12 VMs (4 tipos, demux por Unit)..."
 	@TIMEOUT_SEC=120 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_TYPES_BIN)" 12 interest-types "cenario validado."
@@ -233,14 +231,14 @@ test-interest-period: select-qemu-cpu $(INTEREST_PERIOD_BIN) $(RUN_QEMU_TEST)
 	@for f in $(LOG_DIR)/interest-period/latest/logs/vm2.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-period aprovado."
 
-# T5+T9: ciclo de vida -- desinteresse explicito + per-address (A sai, B continua)
+# ciclo de vida -- desinteresse explicito + per-address (A sai, B continua)
 test-interest-lifecycle: select-qemu-cpu $(INTEREST_LIFECYCLE_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] interest-lifecycle: 7 VMs (entrada/saida dinamica + desinteresse)..."
 	@TIMEOUT_SEC=150 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_LIFECYCLE_BIN)" 7 interest-lifecycle "cenario validado."
 	@for f in $(LOG_DIR)/interest-lifecycle/latest/logs/vm*.log; do grep -aE "RESUMO" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-lifecycle aprovado."
 
-# T5 (presenca): consumidor sai SEM desinteresse; a RSU detecta por presenca (PTP)
+# (presenca): consumidor sai SEM desinteresse; a RSU detecta por presenca (PTP)
 test-interest-presence: select-qemu-cpu $(INTEREST_PRESENCE_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] interest-presence: 3 VMs (RSU broker + produtor + consumidor que abandona)..."
 	@TIMEOUT_SEC=120 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_PRESENCE_BIN)" 3 interest-presence "cenario validado."
@@ -254,7 +252,7 @@ test-interest-rsu-repeat: select-qemu-cpu $(INTEREST_RSU_REPEAT_BIN) $(RUN_QEMU_
 	@for f in $(LOG_DIR)/interest-rsu-repeat/latest/logs/vm*.log; do grep -aE "RESUMO|repetido" "$$f" | sed 's/^/    /' || true; done
 	@echo "[test] interest-rsu-repeat aprovado."
 
-# T1/T6: mobilidade/handover real (WITH_GPS) -- produtor + consumidor moveis
+# mobilidade/handover real -- produtor + consumidor moveis
 test-interest-mobility: select-qemu-cpu $(INTEREST_MOBILITY_BIN) $(RUN_QEMU_TEST) gps-module
 	@echo "[test] interest-mobility: 3 VMs WITH_GPS (RSU + produtor movel + consumidor movel)..."
 	@TIMEOUT_SEC=120 WITH_GPS=1 LOGS_DIR="$(abspath $(LOG_DIR))" QEMU_BIN="$(QEMU)" QEMU_CPU=$$(cat "$(QEMU_CPU_FILE)") "$(RUN_QEMU_TEST)" "$(INTEREST_MOBILITY_BIN)" 9 interest-mobility "cenario validado."
@@ -281,7 +279,13 @@ test-interest: test-interest-fanin test-interest-fanout test-interest-types test
 
 # suite completa: os 10 cenarios
 test-interest-all: test-interest-fanin test-interest-fanout test-interest-types test-interest-period test-interest-lifecycle test-interest-presence test-interest-rsu-repeat test-interest-mobility test-interest-scale test-interest-value
-	@echo "[test] suite interest COMPLETA (10) aprovada."
+	@printf '\n'
+	@printf '═══════════════════════════════════════════════════════════════════\n'
+	@printf '  \xe2\x9c\x94  Etapa 5 -- Publish-Subscribe (Interesse/Resposta)\n'
+	@printf '     10/10 cenarios aprovados:\n'
+	@printf '     fanin . fanout . types . period . lifecycle\n'
+	@printf '     presence . rsu-repeat . mobility . scale . value\n'
+	@printf '═══════════════════════════════════════════════════════════════════\n'
 
 test-stress: select-qemu-cpu $(STRESS_BIN) $(RUN_QEMU_TEST)
 	@echo "[test] rodando cenario stress (intra + inter VM, 5 VMs)..."
